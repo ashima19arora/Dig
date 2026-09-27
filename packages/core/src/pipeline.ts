@@ -4,7 +4,7 @@ import { dedupeRecords } from "./dedupe.js";
 import { diffDatasets } from "./diff.js";
 import { intentDefinition } from "./intents.js";
 import { applyThreshold, mockJevProvider, type JevProvider } from "./jev.js";
-import { normalizeFields } from "./normalize.js";
+import { comparisonKey, normalizeFields } from "./normalize.js";
 import { qualityScore, scoreRecord } from "./rank.js";
 import type {
   CollectedRecord,
@@ -19,6 +19,9 @@ import type {
 } from "./types.js";
 import { sha256, stable } from "./util.js";
 import { validateFields } from "./validate.js";
+
+/** Provenance bookkeeping that legitimately moves every run; a change in it is not a change in the data. */
+const UNCOMPARED_FIELDS = new Set(["last_verified", "source_url"]);
 
 export interface AnnotationBatch {
   annotations: Array<{ recordId: string; remark: string; reasoning: string; confidence: number }>;
@@ -173,11 +176,34 @@ export async function runPipeline(
   }
 
   const previous = input.previous ?? null;
-  const diff = diffDatasets({
-    previous: previous?.map((record) => ({ canonicalEntityId: record.canonicalEntityId, fields: record.fields })) ?? null,
-    current: drafts.map((record) => ({ canonicalEntityId: record.canonicalEntityId, fields: record.fields })),
-    compareFields: input.blueprint.fields,
+  // The diff compares comparison keys, not display values, so casing/plural noise between runs is not a
+  // change (and never becomes a Jev conflict). Bookkeeping fields that move every run are not compared.
+  const keyed = (record: { canonicalEntityId: string; fields: Record<string, string> }) => ({
+    canonicalEntityId: record.canonicalEntityId,
+    fields: Object.fromEntries(Object.entries(record.fields).map(([field, value]) => [field, comparisonKey(field, value)])),
   });
+  const diff = diffDatasets({
+    previous: previous?.map(keyed) ?? null,
+    current: drafts.map(keyed),
+    compareFields: input.blueprint.fields.filter((field) => !UNCOMPARED_FIELDS.has(field)),
+  });
+  // Hand the original values back to everything downstream (conflicts, Jev, the diff panel).
+  {
+    const priorById = new Map((previous ?? []).map((record) => [record.canonicalEntityId, record]));
+    const draftById = new Map(drafts.map((record) => [record.canonicalEntityId, record]));
+    for (const entry of [...diff.added, ...diff.changed, ...diff.unchanged, ...diff.removed]) {
+      const original = draftById.get(entry.canonicalEntityId) ?? priorById.get(entry.canonicalEntityId);
+      if (original) entry.label = label(original);
+    }
+    for (const change of diff.changed) {
+      const prior = priorById.get(change.canonicalEntityId);
+      const current = draftById.get(change.canonicalEntityId);
+      for (const fieldDiff of change.fields) {
+        fieldDiff.from = prior?.fields[fieldDiff.field] ?? "";
+        fieldDiff.to = current?.fields[fieldDiff.field] ?? "";
+      }
+    }
+  }
 
   const previousById = new Map((previous ?? []).map((record) => [record.canonicalEntityId, record]));
   const conflicts: ConflictDraft[] = [];

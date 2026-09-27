@@ -40,8 +40,9 @@ export function suggestJobName(blueprint: CollectionBlueprint): string {
   const place = location ? ` — ${location}` : "";
   switch (blueprint.intent) {
     case "SPONSOR_LOOKUP": {
-      const cat = category === "technology" ? "Technology" : category ?? "Event";
-      return `${cat} Event Sponsors${place}`;
+      const kind = /hackathon/i.test(blueprint.query) ? "Hackathon" : "Event";
+      if (!category) return `${kind} Sponsors${place}`;
+      return `${category === "technology" ? "Technology" : category} ${kind} Sponsors${place}`;
     }
     case "JOB_LOOKUP":
       return `${category ?? "Open"} Jobs${place}`;

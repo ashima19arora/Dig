@@ -271,6 +271,7 @@ async function main() {
     ok(res, req, {
       version: {
         id: version.id,
+        runId: version.run_id,
         versionNumber: version.version_number,
         createdAt: version.created_at,
         rowCount: version.row_count,
@@ -390,16 +391,8 @@ async function main() {
     fail(res, req, 500, "INTERNAL", message);
   });
 
-  setInterval(() => {
-    for (const job of db.dueJobs()) {
-      if (db.active(job.id) || isRunning(job.id)) continue;
-      void executeJob(db, job.id, user.id, { pace: false }).then(() => {
-        const current = db.job(job.id);
-        if (!current?.schedule) return;
-        db.setSchedule(job.id, { ...current.schedule, nextRunAt: computeNextRun(current.schedule) }, user.id);
-      });
-    }
-  }, 20_000).unref();
+  // The background scheduler (re-running due scheduled jobs every 20s) is disabled: it has no UI and would
+  // spend Tavily credits unattended. Schedules can still be saved; nothing runs them until this returns.
 
   app.listen(env.port, () => {
     console.log(`Dig API http://localhost:${env.port}`);

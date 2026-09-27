@@ -678,6 +678,7 @@ function applyPlace(records: CollectedRecord[], location: string | null): Collec
 export const SPONSOR_DIFF = {
   added: 7,
   removed: 2,
-  changed: 12,
+  // last_verified bumps alone are not changes (see UNCOMPARED_FIELDS in pipeline.ts)
+  changed: 4,
   conflicts: 4,
 };

@@ -100,3 +100,31 @@ export function similarity(a: string, b: string): number {
   const distance = levenshtein(left, right);
   return 1 - distance / Math.max(left.length, right.length);
 }
+
+// Words that describe the kind of event rather than the sponsorship itself ("Hackathon Sponsor" = "Sponsor").
+const COMPARE_FILLER = new Set(["hackathon", "hackathons", "event", "events", "by"]);
+// The same role written as a verb: "Sponsored by" = "Sponsor", "Partnered with" = "Partner".
+const COMPARE_ROLE_VERBS: Record<string, string> = { sponsored: "sponsor", partnered: "partner", with: "" };
+
+/**
+ * The form two runs' values are COMPARED in — never stored or displayed. Case, punctuation, plurals and
+ * event-kind filler words are presentation noise from extraction ("Co-Sponsors" vs "co-sponsor"), not a
+ * change in what the source says, so they must not reach the diff as a disagreement.
+ */
+export function comparisonKey(field: string, value: string): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  if (field === "email") return normalizeEmail(raw);
+  if (field === "website" || field === "source_url") return normalizeUrl(raw).toLowerCase();
+  if (field === "phone") return raw.replace(/\D/g, "");
+  if (field === "last_verified") return normalizeDate(raw);
+  const words = raw
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(" ")
+    .map((word) => COMPARE_ROLE_VERBS[word] ?? word)
+    .filter((word) => word && !COMPARE_FILLER.has(word))
+    .map((word) => (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word));
+  return words.join(" ") || raw.toLowerCase();
+}

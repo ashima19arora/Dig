@@ -1,27 +1,28 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { ORG_NAME } from "./events";
+import { Auth } from "./pages/Auth";
+import { Dashboard } from "./pages/Dashboard";
+import { EventFolder } from "./pages/EventFolder";
+import { FolderBoard } from "./pages/FolderBoard";
+import { JobBoard } from "./pages/JobBoard";
+import { Landing } from "./pages/Landing";
 
-// Placeholder pages — we build these one by one, matching the Claude Design
-// screens: Landing, Dashboard, EventFolder, JobBoard, Compose.
-function Placeholder({ name }: { name: string }) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-paper text-ink">
-      <div className="text-center">
-        <div className="kicker mb-2">Dig</div>
-        <div className="display text-2xl">{name}</div>
-        <div className="mt-1 text-sm text-mute">Not built yet — this route boots so the app runs.</div>
-      </div>
-    </div>
-  );
+function StandaloneJobBoard() {
+  const { jobId = "" } = useParams();
+  return <JobBoard jobId={jobId} crumbs={[{ label: ORG_NAME, to: "/dashboard" }, { label: "Job Board" }]} />;
 }
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Placeholder name="Landing" />} />
-      <Route path="/dashboard" element={<Placeholder name="Dashboard" />} />
-      <Route path="/events/:eventId" element={<Placeholder name="Event Folder" />} />
-      <Route path="/jobs/:jobId" element={<Placeholder name="Job Board" />} />
-      <Route path="/compose" element={<Placeholder name="Compose" />} />
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Auth mode="login" />} />
+      <Route path="/signup" element={<Auth mode="signup" />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/events/:eventId" element={<EventFolder />} />
+      <Route path="/events/:eventId/:folder" element={<FolderBoard />} />
+      <Route path="/jobs/:jobId" element={<StandaloneJobBoard />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

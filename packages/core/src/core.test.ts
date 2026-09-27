@@ -5,7 +5,7 @@ import { collectDemo, DEMO_NOW, SPONSOR_DIFF } from "./demo-data.js";
 import { diffDatasets } from "./diff.js";
 import { matchIntent } from "./intents.js";
 import { applyThreshold, mockJevProvider } from "./jev.js";
-import { canonicalCompanyName, normalizeEmail, normalizeUrl, similarity } from "./normalize.js";
+import { canonicalCompanyName, comparisonKey, normalizeEmail, normalizeUrl, similarity } from "./normalize.js";
 import { runPipeline } from "./pipeline.js";
 import { backoffMs, withRetry } from "./util.js";
 import { validateFields } from "./validate.js";
@@ -51,6 +51,27 @@ describe("normalization", () => {
     const left = canonicalCompanyName("Microsoft India Pvt Ltd").toLowerCase();
     const right = canonicalCompanyName("Microsoft India Private Limited").toLowerCase();
     expect(similarity(left, right)).toBe(1);
+  });
+});
+
+describe("comparison keys", () => {
+  it("treats case, plural and event-kind wording as the same value", () => {
+    const same = (a: string, b: string) => expect(comparisonKey("sponsorship_type", a)).toBe(comparisonKey("sponsorship_type", b));
+    same("Co-Sponsor", "Co-Sponsors");
+    same("Supporting partner", "supporting partner");
+    same("Legend Sponsor", "legend sponsor");
+    same("Sponsors", "Sponsor");
+    same("Sponsor", "Hackathon Sponsor");
+    same("sponsor", "sponsored by");
+    expect(comparisonKey("phone", "+1 888 672 1076")).toBe(comparisonKey("phone", "+1-888-672-1076"));
+  });
+
+  it("still separates genuinely different values", () => {
+    const differ = (a: string, b: string) => expect(comparisonKey("sponsorship_type", a)).not.toBe(comparisonKey("sponsorship_type", b));
+    differ("Gold Sponsor", "Silver Sponsor");
+    differ("Legend Sponsor", "Sponsor");
+    differ("Education partner", "Sponsor");
+    expect(comparisonKey("email", "priya.nair@infosys.com")).not.toBe(comparisonKey("email", "campus@infosys.com"));
   });
 });
 

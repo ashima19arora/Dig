@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { CollectionBlueprint, JobState, Schedule } from "@dig/schemas";
+import { comparisonKey } from "@dig/core";
 import type { AnnotationBatch, IntelligenceReport, PipelineResult, PublishedRecord } from "@dig/core";
 import { env } from "./env.js";
 
@@ -392,8 +393,40 @@ export class DigDb {
           );
         }
       }
+      // One live conflict per open question. A pending conflict from an earlier version that this run raises
+      // again is carried forward (same id, original detection date); any other earlier pending conflict is
+      // superseded, because this version either settled it or replaced it with a different disagreement.
+      const questionKey = (entity: string, field: string, from: string, to: string) =>
+        [entity, field, comparisonKey(field, from), comparisonKey(field, to)].join(" | ");
+      const openEarlier = new Map(
+        this.all<{ id: string; canonical_entity_id: string; field: string; old_value: string; new_value: string }>(
+          "SELECT id, canonical_entity_id, field, old_value, new_value FROM conflicts WHERE job_id = ? AND status = 'PENDING' AND run_id != ?",
+          input.jobId,
+          input.runId,
+        ).map((row) => [questionKey(row.canonical_entity_id, row.field, row.old_value, row.new_value), row.id]),
+      );
+      const carriedIds = new Map<string, string>();
       for (const conflict of result.conflicts) {
         const record = result.records.find((item) => item.canonicalEntityId === conflict.canonicalEntityId);
+        const earlierId = conflict.status === "PENDING"
+          ? openEarlier.get(questionKey(conflict.canonicalEntityId, conflict.field, conflict.oldValue, conflict.newValue))
+          : undefined;
+        if (earlierId) {
+          openEarlier.delete(questionKey(conflict.canonicalEntityId, conflict.field, conflict.oldValue, conflict.newValue));
+          carriedIds.set(conflict.id, earlierId);
+          this.run(
+            `UPDATE conflicts SET run_id = ?, record_id = ?, new_value = ?, new_evidence_json = ?, confidence = ?, reason = ?, updated_at = ? WHERE id = ?`,
+            input.runId,
+            record?.id ?? null,
+            conflict.newValue,
+            JSON.stringify(conflict.newEvidence),
+            conflict.confidence,
+            conflict.reason,
+            now,
+            earlierId,
+          );
+          continue;
+        }
         this.run(
           `INSERT INTO conflicts (id, job_id, run_id, record_id, canonical_entity_id, field, old_value, new_value, old_evidence_json, new_evidence_json, detected_at, status, decision, confidence, reason, resolved_at, resolved_by, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -417,6 +450,20 @@ export class DigDb {
           now,
           now,
         );
+      }
+      for (const staleId of openEarlier.values()) {
+        this.run(
+          "UPDATE conflicts SET status = 'SUPERSEDED', resolved_at = ?, resolved_by = 'superseded', updated_at = ? WHERE id = ?",
+          now,
+          now,
+          staleId,
+        );
+      }
+      // The diff refers to conflicts by id; point carried-forward ones at the row that actually exists.
+      if (carriedIds.size > 0) {
+        const remap = (ids: string[]) => ids.map((id) => carriedIds.get(id) ?? id);
+        result.diff.conflictIds = remap(result.diff.conflictIds);
+        for (const change of result.diff.changed) change.conflictIds = remap(change.conflictIds ?? []);
       }
       this.run(
         `UPDATE job_runs SET status = ?, finished_at = ?, stats_json = ?, diff_json = ?, report_json = ?, llm_json = ?, progress_json = ?, updated_at = ? WHERE id = ?`,
@@ -815,6 +862,7 @@ interface VersionRow {
 
 interface Version {
   id: string;
+  run_id: string;
   version_number: number;
   created_at: string;
   row_count: number;

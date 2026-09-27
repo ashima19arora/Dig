@@ -234,10 +234,18 @@ function groundedFields(fields: Record<string, string>, content: string): { fiel
   for (const [key, raw] of Object.entries(fields)) {
     const value = (raw ?? "").trim();
     if (!value) continue;
-    if (EXEMPT_FROM_GROUNDING.has(key) || haystack.includes(value.toLowerCase())) {
+    if (EXEMPT_FROM_GROUNDING.has(key)) {
       kept[key] = value;
       fieldNames.push(key);
+      continue;
     }
+    const at = haystack.indexOf(value.toLowerCase());
+    if (at < 0) continue;
+    // Keep the source's own spelling, not the model's re-cased copy ("legend sponsor" → "Legend Sponsor"),
+    // so the same page yields the same value on every run.
+    const literal = content.slice(at, at + value.length);
+    kept[key] = literal.toLowerCase() === value.toLowerCase() ? literal : value;
+    fieldNames.push(key);
   }
   return { fields: kept, fieldNames };
 }
@@ -658,7 +666,36 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PERSON = /^[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]*){1,3}$/;
 const NOT_A_SPONSOR =
   /^(sponsors?|partners?|our (sponsors|partners)|tba|tbd|coming soon|and more|more|others?|your (company|logo|brand)( here)?|(sponsor|company|partner) name|name sponsor|logo|company|.)$/i;
-const TITLE_SUFFIX = /\s*[|·–—-]\s*(devpost|devfolio|unstop|hackerearth|hackerrank|dorahacks|luma|lu\.ma)\s*$/i;
+const SITE_NAMES =
+  "devpost|devfolio|unstop|hackerearth|hackerrank|dorahacks|luma|lu\\.ma|instagram|facebook|linkedin|twitter|youtube|reddit|threads|tiktok|medium|eventbrite|meetup|mlh";
+const TITLE_SUFFIX = new RegExp(`\\s*[|·–—-]\\s*(${SITE_NAMES})(\\.(com|co|io))?\\s*$`, "i");
+// A page's title is often just the site ("Instagram") or a section ("Hackathons"), which is no event name.
+// Titles of the sponsor list itself ("Thank you, Hackathon Sponsors!", "Our Sponsors") name no event.
+const SPONSOR_LIST_TITLE = /thank you|\b(our|the) (sponsors|partners)\b|^(hackathon |event )?(sponsors|partners)\b/i;
+const NOT_AN_EVENT = new RegExp(`^(${SITE_NAMES}|home|events?|hackathons?|sponsors?|partners?|overview|register|login)$`, "i");
+
+/**
+ * The event name for a mention, as a literal prefix of the source text with any "| Devfolio"-style site
+ * suffix removed — or null when neither the model's answer nor the page title names a real event.
+ */
+function eventNameFor(candidate: string | undefined, doc: SourceDoc, haystack: string): string | null {
+  const siteLabel = registrableLabel(domainOf(doc.url));
+  for (const raw of [candidate ?? "", doc.title]) {
+    const grounded = groundedFields({ event_name: raw }, haystack).fields.event_name;
+    if (!grounded) continue;
+    let name = grounded;
+    for (let before = ""; before !== name; ) {
+      before = name;
+      name = name.replace(TITLE_SUFFIX, "").replace(/\s*(\.{3}|…)$/, "").trim();
+    }
+    // "Hack the North 2024: Canada's Biggest Hackathon" → "Hack the North 2024": drop a long tagline, keep short editions.
+    const colon = name.indexOf(": ");
+    if (colon >= 4 && name.length - colon - 2 >= 25) name = name.slice(0, colon).trim();
+    if (name.length < 4 || NOT_AN_EVENT.test(name) || SPONSOR_LIST_TITLE.test(name) || companyKey(name) === siteLabel) continue;
+    return name;
+  }
+  return null;
+}
 
 const KEY_NOISE = ["incorporated", "inc", "llc", "ltd", "pvt", "private", "limited", "corporation", "corp", "company", "co", "ai", "labs", "technologies", "technology", "tech", "software", "com", "io", "india", "global"];
 
@@ -744,8 +781,11 @@ function acceptSponsors(batch: SourceDoc[], parsed: SponsorBatchResponse | null,
     const doc = typeof entry.i === "number" ? inBatch.get(entry.i) : undefined;
     if (!doc || !Array.isArray(entry.sponsors)) continue;
     const haystack = `${doc.title}\n${doc.fed}`;
-    const titleEvent = doc.title.replace(TITLE_SUFFIX, "").trim();
-    const event = groundedFields({ event_name: entry.event ?? "" }, haystack).fields.event_name ?? titleEvent;
+    const event = eventNameFor(entry.event, doc, haystack);
+    if (!event) {
+      dropped += entry.sponsors.length;
+      continue;
+    }
     const hostLabel = registrableLabel(domainOf(doc.url));
 
     for (const sponsor of entry.sponsors) {

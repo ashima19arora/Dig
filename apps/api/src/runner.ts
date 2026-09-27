@@ -1,12 +1,4 @@
-import {
-  collectDemo,
-  deterministicBatch,
-  runPipeline,
-  stagePercent,
-  type AnnotationBatch,
-  type CollectedRecord,
-  type PublishedRecord,
-} from "@dig/core";
+import { collectDemo, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
 import type { Response } from "express";
 import { collectLive } from "./collect-live.js";
 import { emptyProgress, type Progress, type DigDb } from "./db.js";
@@ -58,82 +50,6 @@ export function computeNextRun(input: {
   return null;
 }
 
-const CHAT_ENDPOINTS: Record<string, string> = {
-  openai: "https://api.openai.com/v1/chat/completions",
-  groq: "https://api.groq.com/openai/v1/chat/completions",
-};
-
-function llmFor(db: DigDb) {
-  if (!env.llmEnabled) return undefined;
-  const liveProvider = CHAT_ENDPOINTS[env.llmProvider] && env.llmKey;
-  const model = liveProvider ? env.llmModel : "mock";
-  return {
-    enabled: true,
-    model,
-    readCache: (hash: string) => db.readCache(hash),
-    writeCache: (hash: string, batch: AnnotationBatch) => db.writeCache(hash, model, batch),
-    generate: async (input: { records: PublishedRecord[]; reportFacts: string }) => {
-      if (liveProvider) return chatBatch(input.reportFacts, input.records);
-      return {
-        summary: input.records[0]?.annotation.remark ?? "No records were collected.",
-        observations: [input.reportFacts.split("\n")[0] ?? ""],
-        annotations: input.records.map((record) => ({
-          recordId: record.canonicalEntityId,
-          remark: record.annotation.remark,
-          reasoning: record.annotation.reasoning,
-          confidence: record.confidence,
-        })),
-      } satisfies AnnotationBatch;
-    },
-  };
-}
-
-async function chatBatch(facts: string, records: PublishedRecord[]): Promise<AnnotationBatch> {
-  const fallback = deterministicBatch(records, { firstVersion: true, added: [], removed: [], changed: [], unchanged: [], conflictIds: [] }, records[0] ? {
-    intent: "MARKET_LOOKUP",
-    query: "",
-    entities: { category: null, location: null },
-    fields: [],
-    freshness: { required: false, maxAgeDays: 90 },
-    sources: [],
-    ranking: { strategy: "activity" },
-  } : {
-    intent: "MARKET_LOOKUP",
-    query: "",
-    entities: { category: null, location: null },
-    fields: [],
-    freshness: { required: false, maxAgeDays: 90 },
-    sources: [],
-    ranking: { strategy: "activity" },
-  });
-  const response = await fetch(CHAT_ENDPOINTS[env.llmProvider], {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.llmKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.llmModel,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You generate concise business intelligence annotations from verified structured datasets. Do not invent facts. Do not infer unsupported information. Every statement must be supported by the supplied records. If evidence is insufficient, say so. Return JSON with summary, observations, and annotations[{recordId,remark,reasoning,confidence}].",
-        },
-        { role: "user", content: facts },
-      ],
-    }),
-  });
-  if (!response.ok) return fallback;
-  const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = body.choices?.[0]?.message?.content;
-  if (!content) return fallback;
-  const parsed = JSON.parse(content) as AnnotationBatch;
-  if (!Array.isArray(parsed.annotations)) return fallback;
-  return parsed;
-}
 
 export async function executeJob(db: DigDb, jobId: string, actorId: string, options?: { pace?: boolean }) {
   if (running.has(jobId)) return;
@@ -153,6 +69,9 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
     if (job.demo) {
       collected = collectDemo(job.blueprint, runNumber, job.blueprint.entities.location);
     } else {
+      // Live collection is the long part of a run (~1 min): surface it instead of sitting in QUEUED.
+      db.setStatus(jobId, "COLLECTING", "QUEUED", runId, { runNumber });
+      publish(db, jobId);
       collected = await collectLive(job.blueprint, now.toISOString());
     }
     collected = collected.slice(0, env.maxRecords);
@@ -165,7 +84,6 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
         now,
         threshold: env.threshold,
         demo: job.demo,
-        llm: llmFor(db),
       },
       async (stage, progress) => {
         if (cancelled.has(jobId)) {

@@ -74,3 +74,113 @@ export function pct(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${Math.round(value * 100)}%`;
 }
+
+export interface SourceRef {
+  url: string;
+  title: string;
+  domain: string;
+  publishedAt: string;
+  authority: "official" | "secondary" | "press";
+  excerpt: string;
+  fieldNames: string[];
+}
+
+export interface Evidence {
+  id: string;
+  fieldName: string;
+  value: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  excerpt: string;
+  collectedAt: string;
+  publishedAt: string;
+  authority: "official" | "secondary" | "press";
+  confidence: number;
+}
+
+export type RecordStatus = "verified" | "needs_review" | "possible_duplicate" | "incomplete";
+
+export interface DatasetRecord {
+  id: string;
+  canonicalEntityId: string;
+  fields: Record<string, string>;
+  rank: number;
+  confidence: number;
+  status: RecordStatus;
+  sourceCount: number;
+  flags: string[];
+  sources: SourceRef[];
+  evidence: Evidence[];
+  label: string;
+  change: "initial" | "added" | "changed" | "conflict" | "unchanged";
+}
+
+export interface DatasetVersion {
+  id: string;
+  /** the run that produced this version — its conflicts are the live ones */
+  runId: string;
+  versionNumber: number;
+  createdAt: string;
+  rowCount: number;
+  sourceCount: number;
+  status: string;
+  qualityScore: number | null;
+  avgConfidence: number | null;
+}
+
+export interface Dataset {
+  version: DatasetVersion | null;
+  records: DatasetRecord[];
+}
+
+export interface Conflict {
+  id: string;
+  jobId: string;
+  runId: string;
+  recordId: string | null;
+  canonicalEntityId: string;
+  label: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+  oldEvidence: Evidence | null;
+  newEvidence: Evidence | null;
+  detectedAt: string;
+  status: "PENDING" | "AUTO_RESOLVED" | "RESOLVED" | string;
+  decision: string | null;
+  confidence: number | null;
+  reason: string | null;
+  resolvedAt: string | null;
+}
+
+export interface DiffEntry {
+  canonicalEntityId: string;
+  label: string;
+  detail: string;
+  fields: Array<{ field: string; from: string; to: string }>;
+}
+
+export interface Diff {
+  firstVersion: boolean;
+  added: DiffEntry[];
+  removed: DiffEntry[];
+  changed: DiffEntry[];
+  unchanged: DiffEntry[];
+  conflictIds: string[];
+}
+
+export interface JobProgress {
+  status: string;
+  runId: string | null;
+  runNumber: number | null;
+  progress: Progress;
+  error: string | null;
+}
+
+export interface JobDetail {
+  job: JobSummary;
+  version: unknown;
+  progress: JobProgress;
+}
+
+export const ACTIVE_STATES = ["QUEUED", "COLLECTING", "NORMALIZING", "VALIDATING", "DEDUPLICATING", "RANKING", "ANNOTATING"];

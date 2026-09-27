@@ -29,7 +29,8 @@ function flag(name: string, fallback: boolean) {
 
 export const env = {
   port: Number(process.env.PORT ?? 8787),
-  demo: flag("DEMO_MODE", true),
+  // Live web research by default; the fixture path is for tests and the explicit `seed` command only.
+  demo: flag("DEMO_MODE", false),
   pacingMs: Number(process.env.DEMO_STAGE_PACING_MS ?? 380),
   llmEnabled: flag("LLM_ENABLED", true),
   llmProvider: process.env.LLM_PROVIDER ?? "mock",
