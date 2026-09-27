@@ -7,3 +7,5 @@ data/*.db-journal
 *.log
 .DS_Store
 data/cache/
+
+data/
