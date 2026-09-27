@@ -35,7 +35,14 @@ export const env = {
   llmProvider: process.env.LLM_PROVIDER ?? "mock",
   llmKey: process.env.LLM_API_KEY ?? "",
   llmModel: process.env.LLM_MODEL ?? "gpt-4o-mini",
+  // Groq rate-limits tokens per minute per model, so extra models act as parallel lanes for batched extraction.
+  llmExtraModels: (process.env.LLM_EXTRA_MODELS ?? (process.env.LLM_PROVIDER === "groq" ? "openai/gpt-oss-20b,qwen/qwen3.8-27b" : ""))
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean),
   tavilyKey: process.env.TAVILY_API_KEY ?? process.env.SEARCH_API_KEY ?? "",
+  // Each sponsor contact lookup costs one Tavily credit (cached for 7 days per company).
+  sponsorEnrichLimit: Number(process.env.SPONSOR_ENRICH_LIMIT ?? 80),
   threshold: Number(process.env.JEV_AUTO_THRESHOLD ?? 0.85),
   maxRecords: Number(process.env.MAX_RECORDS ?? 500),
   databasePath: path.resolve(repoRoot, process.env.DATABASE_PATH ?? "data/dig.db"),

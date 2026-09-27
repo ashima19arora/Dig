@@ -58,16 +58,22 @@ export function computeNextRun(input: {
   return null;
 }
 
+const CHAT_ENDPOINTS: Record<string, string> = {
+  openai: "https://api.openai.com/v1/chat/completions",
+  groq: "https://api.groq.com/openai/v1/chat/completions",
+};
+
 function llmFor(db: DigDb) {
   if (!env.llmEnabled) return undefined;
-  const model = env.llmProvider === "openai" && env.llmKey ? env.llmModel : "mock";
+  const liveProvider = CHAT_ENDPOINTS[env.llmProvider] && env.llmKey;
+  const model = liveProvider ? env.llmModel : "mock";
   return {
     enabled: true,
     model,
     readCache: (hash: string) => db.readCache(hash),
     writeCache: (hash: string, batch: AnnotationBatch) => db.writeCache(hash, model, batch),
     generate: async (input: { records: PublishedRecord[]; reportFacts: string }) => {
-      if (env.llmProvider === "openai" && env.llmKey) return openAiBatch(input.reportFacts, input.records);
+      if (liveProvider) return chatBatch(input.reportFacts, input.records);
       return {
         summary: input.records[0]?.annotation.remark ?? "No records were collected.",
         observations: [input.reportFacts.split("\n")[0] ?? ""],
@@ -82,7 +88,7 @@ function llmFor(db: DigDb) {
   };
 }
 
-async function openAiBatch(facts: string, records: PublishedRecord[]): Promise<AnnotationBatch> {
+async function chatBatch(facts: string, records: PublishedRecord[]): Promise<AnnotationBatch> {
   const fallback = deterministicBatch(records, { firstVersion: true, added: [], removed: [], changed: [], unchanged: [], conflictIds: [] }, records[0] ? {
     intent: "MARKET_LOOKUP",
     query: "",
@@ -100,7 +106,7 @@ async function openAiBatch(facts: string, records: PublishedRecord[]): Promise<A
     sources: [],
     ranking: { strategy: "activity" },
   });
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(CHAT_ENDPOINTS[env.llmProvider], {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.llmKey}`,

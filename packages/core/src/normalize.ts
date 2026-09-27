@@ -43,9 +43,9 @@ export function normalizeDate(value: string): string {
   return new Date(parsed).toISOString().slice(0, 10);
 }
 
+// Phones keep their written formatting so the value stays a literal substring of its source.
 export function normalizePhone(value: string): string {
-  const digits = value.replace(/[^\d+]/g, "");
-  return digits;
+  return collapseSpace(value);
 }
 
 const COMPANY_FIELDS = new Set(["company_name", "vendor", "organization", "organizer"]);

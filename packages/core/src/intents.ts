@@ -22,6 +22,7 @@ const sponsorFields = [
   "website",
   "contact",
   "email",
+  "phone",
   "last_verified",
   "source_url",
 ];
@@ -34,7 +35,7 @@ export const INTENTS: Record<IntentId, IntentDefinition> = {
     identityFields: ["company_name", "event_name"],
     protectedFields: ["contact", "email", "sponsorship_type"],
     requiredFields: ["company_name", "event_name", "source_url"],
-    optionalFields: ["sponsorship_type", "website", "contact", "email", "last_verified"],
+    optionalFields: ["sponsorship_type", "website", "contact", "email", "phone", "last_verified"],
     fields: sponsorFields,
     supportedSources: ["search", "event_pages", "company_pages", "press_releases"],
     rankingStrategy: "activity",

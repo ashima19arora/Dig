@@ -20,12 +20,12 @@ describe("intent matching", () => {
     expect(matchIntent("Find enterprise AI vendors for analytics and machine learning").intent).toBe("VENDOR_LOOKUP");
   });
 
-  it("builds a sponsor blueprint with Delhi NCR and eight fields", () => {
+  it("builds a sponsor blueprint with Delhi NCR and nine fields", () => {
     const { blueprint, match } = buildBlueprint("Find active technology event sponsors in Delhi NCR");
     expect(blueprint.intent).toBe("SPONSOR_LOOKUP");
     expect(blueprint.entities.location).toBe("Delhi NCR");
     expect(blueprint.entities.category).toBe("technology");
-    expect(blueprint.fields).toHaveLength(8);
+    expect(blueprint.fields).toHaveLength(9);
     expect(blueprint.freshness.required).toBe(true);
     expect(blueprint.freshness.maxAgeDays).toBe(90);
     expect(match.method).toBe("keyword");
