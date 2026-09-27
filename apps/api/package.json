@@ -1,0 +1,29 @@
+{
+  "name": "@dig/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "migrate": "tsx src/index.ts migrate",
+    "seed": "tsx src/index.ts seed",
+    "reset": "tsx src/index.ts reset",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dig/core": "*",
+    "@dig/schemas": "*",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

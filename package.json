@@ -1,0 +1,25 @@
+{
+  "name": "dig",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dig turns a business question into a living, source-backed dataset.",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c orange,gray \"npm run dev -w @dig/api\" \"npm run dev -w @dig/web\"",
+    "test": "npm run test -w @dig/core",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @dig/web && npm run typecheck -w @dig/api",
+    "db:migrate": "npm run migrate -w @dig/api",
+    "db:seed": "npm run seed -w @dig/api",
+    "demo:reset": "npm run reset -w @dig/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

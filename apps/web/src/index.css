@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Palette matches the job-board design: dark, warm, amber accent.
+  Light-mode values exist so the app doesn't break if dark is ever
+  unset, but every screen we've designed so far is dark-first.
+*/
+:root {
+  --ink: 236 227 212;
+  --paper: 20 17 16;
+  --surface: 26 22 19;
+  --line: 58 49 41;
+  --mute: 168 154 134;
+  --accent: 224 163 57;
+  color: rgb(var(--ink));
+  background: rgb(var(--paper));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html.light {
+  --ink: 28 25 23;
+  --paper: 243 240 232;
+  --surface: 251 250 246;
+  --line: 228 223 212;
+  --mute: 111 106 98;
+  --accent: 212 138 43;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
+}
+
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+::selection { background: rgba(224, 163, 57, 0.25); }
+
+.num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.display { font-family: "Fraunces", Georgia, serif; }
+
+@layer components {
+  .panel { @apply border border-line bg-surface; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn border-accent bg-accent text-paper hover:brightness-110; }
+  .btn-ghost { @apply btn border-line bg-surface text-ink hover:border-mute; }
+  .field { @apply w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-accent; }
+  .kicker { @apply text-[11px] font-semibold uppercase tracking-[0.06em] text-mute; }
+  .link { @apply cursor-pointer text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent; }
+  .row-link { @apply hover:bg-paper; }
+}
