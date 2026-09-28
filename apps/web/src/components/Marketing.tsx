@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 
 export const GITHUB_URL = "https://github.com/ashima19arora/Dig";
+export const GUIDE_URL = "https://github.com/ashima19arora/Dig#readme";
 const TEAM = [
   { name: "Mayank", url: "https://www.linkedin.com/in/mayankgarg18/" },
   { name: "Ashima", url: "https://www.linkedin.com/in/ashima-arora-0396ab336/" },
@@ -42,7 +43,6 @@ const TABS: Array<[string, string]> = [
   ["/why", "Why Dig"],
   ["/dev-log", "Dev Log"],
   ["/stack", "The Stack"],
-  ["/guide", "Guide"],
 ];
 
 export function MarketingNav() {
@@ -58,6 +58,9 @@ export function MarketingNav() {
             {label}
           </NavLink>
         ))}
+        <a href={GUIDE_URL} target="_blank" rel="noreferrer" className="mk-link pixel">
+          Guide
+        </a>
         <AuthButton mode="login" className="mk-link mk-auth pixel">
           Log in
         </AuthButton>

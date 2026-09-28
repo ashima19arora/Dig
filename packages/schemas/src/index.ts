@@ -11,10 +11,14 @@ export const INTENT_IDS = [
   "MARKET_LOOKUP",
   "FUNDING_LOOKUP",
   "VENDOR_LOOKUP",
+  "JUDGE_LOOKUP",
 ] as const;
 
 export const intentIdSchema = z.enum(INTENT_IDS);
 export type IntentId = z.infer<typeof intentIdSchema>;
+
+/** The intents that run end to end against the live web. Everything else is refused as "not supported yet". */
+export const LIVE_INTENTS: IntentId[] = ["SPONSOR_LOOKUP", "JOB_LOOKUP", "LEAD_LOOKUP", "COMPETITOR_LOOKUP", "JUDGE_LOOKUP"];
 
 export const JOB_STATES = [
   "DRAFT",
@@ -52,6 +56,8 @@ export const blueprintSchema = z.object({
   entities: z.object({
     category: z.string().nullable(),
     location: z.string().nullable(),
+    /** What the search is about, as parsed from the question: a product, topic, event type or role. */
+    subject: z.string().nullable().optional(),
   }),
   fields: z.array(z.string().min(1)).min(1),
   freshness: z.object({
@@ -81,10 +87,63 @@ export const createJobSchema = z.object({
   query: z.string().trim().min(8).max(2000),
   name: z.string().trim().min(1).max(180).optional(),
   blueprint: blueprintSchema.optional(),
-  // When true, this job collects from the live web (Tavily search + an LLM
-  // extraction pass) instead of the deterministic demo fixtures, regardless
-  // of the server's global DEMO_MODE default.
-  live: z.boolean().optional(),
+});
+
+export const renameJobSchema = z.object({
+  name: z.string().trim().min(1, "Give the search a name.").max(180),
+});
+
+export const OUTREACH_STATUSES = ["pending", "interested", "declined"] as const;
+export type OutreachStatus = (typeof OUTREACH_STATUSES)[number];
+
+export const outreachUpdateSchema = z.object({
+  status: z.enum(OUTREACH_STATUSES),
+  note: z.string().trim().max(280, "Keep the note under 280 characters.").default(""),
+});
+
+export const signupSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name.").max(120),
+  email: z.string().trim().toLowerCase().min(1, "Enter your email.").email("Enter a valid email address.").max(254),
+  password: z.string().min(1, "Enter a password.").min(8, "Use at least 8 characters for your password.").max(200),
+});
+
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().min(1, "Enter your email.").email("Enter a valid email address."),
+  password: z.string().min(1, "Enter your password."),
+});
+
+export const profileUpdateSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name.").max(120),
+  role: z.string().trim().max(120).default(""),
+});
+
+export const FOLDER_KEYS = ["sponsors", "judges", "jobs", "leads", "competitors"] as const;
+export const folderKeySchema = z.enum(FOLDER_KEYS);
+export type FolderKey = z.infer<typeof folderKeySchema>;
+
+/** Each event folder holds the results of one intent. */
+export const FOLDER_INTENTS: Record<FolderKey, IntentId> = {
+  sponsors: "SPONSOR_LOOKUP",
+  judges: "JUDGE_LOOKUP",
+  jobs: "JOB_LOOKUP",
+  leads: "LEAD_LOOKUP",
+  competitors: "COMPETITOR_LOOKUP",
+};
+
+export const eventInputSchema = z.object({
+  name: z.string().trim().min(1, "Give the event a name.").max(160),
+  description: z.string().trim().max(2000).default(""),
+  date: z.string().trim().max(80).default(""),
+  targets: z.string().trim().max(400).default(""),
+});
+
+export const eventUpdateSchema = eventInputSchema.partial().extend({
+  favourite: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  touched: z.boolean().optional(),
+  folderNames: z.record(folderKeySchema, z.string().trim().min(1).max(80)).optional(),
+  /** folder → job id, or null to unlink */
+  jobs: z.record(folderKeySchema, z.string().uuid().nullable()).optional(),
 });
 
 export const previewBlueprintSchema = z.object({
@@ -157,6 +216,11 @@ export const FIELD_LABELS: Record<string, string> = {
   amount: "Amount",
   deadline: "Deadline",
   capability: "Capability",
+  phone: "Phone",
+  person_name: "Name",
+  affiliation: "Affiliation",
+  expertise: "Expertise",
+  profile_url: "Profile",
 };
 
 export function fieldLabel(field: string): string {
@@ -174,6 +238,7 @@ export const INTENT_LABELS: Record<IntentId, string> = {
   MARKET_LOOKUP: "Market lookup",
   FUNDING_LOOKUP: "Funding lookup",
   VENDOR_LOOKUP: "Vendor lookup",
+  JUDGE_LOOKUP: "Judge lookup",
 };
 
 export function stateLabel(state: JobState): string {

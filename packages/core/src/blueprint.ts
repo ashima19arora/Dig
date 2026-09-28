@@ -34,26 +34,47 @@ export function extractCategory(query: string): string | null {
   return null;
 }
 
+/** "AI researchers" → "AI", "frontend internships" stays — drops words the name already says. */
+function trimSubject(subject: string | undefined, noise: RegExp): string | undefined {
+  const trimmed = subject?.replace(noise, " ").replace(/\s+/g, " ").trim();
+  return trimmed || undefined;
+}
+
+function titleCase(text: string): string {
+  return text.replace(/\b([a-z])/g, (letter) => letter.toUpperCase());
+}
+
 export function suggestJobName(blueprint: CollectionBlueprint): string {
   const location = blueprint.entities.location;
   const category = blueprint.entities.category;
+  const subject = blueprint.entities.subject?.trim();
   const place = location ? ` — ${location}` : "";
   switch (blueprint.intent) {
+    case "JUDGE_LOOKUP": {
+      const field = trimSubject(subject, /\b(researchers?|experts?|people|persons?|judges?|mentors?|jury|members?|speakers?|professionals?|who|could|be)\b/gi);
+      return `${field ? `${titleCase(field)} ` : ""}Judges & Mentors${place}`;
+    }
     case "SPONSOR_LOOKUP": {
       const kind = /hackathon/i.test(blueprint.query) ? "Hackathon" : "Event";
       if (!category) return `${kind} Sponsors${place}`;
       return `${category === "technology" ? "Technology" : category} ${kind} Sponsors${place}`;
     }
-    case "JOB_LOOKUP":
-      return `${category ?? "Open"} Jobs${place}`;
+    case "JOB_LOOKUP": {
+      const role = trimSubject(subject, /\b(jobs?|roles?|positions?|openings?|vacanc(y|ies))\b/gi);
+      if (role && /\bintern(ship)?s?\b/i.test(role)) return `${titleCase(role)}${place}`;
+      return `${role ? titleCase(role) : category ?? "Open"} Jobs${place}`;
+    }
     case "COMPETITOR_LOOKUP":
+      if (subject) return `${titleCase(subject)} Competitors`;
       return category === "SaaS" ? "SaaS Competitor Landscape" : `${category ?? "Market"} Competitor Landscape`;
     case "FUNDING_LOOKUP":
       return "Startup Funding Opportunities";
     case "VENDOR_LOOKUP":
       return /enterprise/i.test(blueprint.query) || category === "AI" ? "Enterprise AI Vendors" : `${category ?? "Enterprise"} Vendors`;
-    case "LEAD_LOOKUP":
-      return `Sales Leads${place}`;
+    case "LEAD_LOOKUP": {
+      const target = trimSubject(subject, /\b(companies|leads?|prospects?)\b/gi);
+      return `${target ? `${titleCase(target)} ` : "Sales "}Leads${place}`;
+    }
     case "EVENT_LOOKUP":
       return `Technology Events${place}`;
     case "COMPANY_LOOKUP":
@@ -67,7 +88,18 @@ export function suggestJobName(blueprint: CollectionBlueprint): string {
   }
 }
 
-export function buildBlueprint(query: string, intentOverride?: IntentId): {
+/** Entities parsed from the question by the LLM classifier; any of them may be missing. */
+export interface ParsedEntities {
+  subject?: string | null;
+  location?: string | null;
+  category?: string | null;
+}
+
+export function buildBlueprint(
+  query: string,
+  intentOverride?: IntentId,
+  parsed?: ParsedEntities,
+): {
   blueprint: CollectionBlueprint;
   match: IntentMatch;
 } {
@@ -79,8 +111,9 @@ export function buildBlueprint(query: string, intentOverride?: IntentId): {
     intent,
     query,
     entities: {
-      category: extractCategory(query),
-      location: extractLocation(query),
+      category: parsed?.category?.trim() || extractCategory(query),
+      location: parsed?.location?.trim() || extractLocation(query),
+      subject: parsed?.subject?.trim() || null,
     },
     fields: definition.fields,
     freshness: {

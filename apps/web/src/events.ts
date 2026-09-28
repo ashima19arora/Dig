@@ -1,18 +1,22 @@
-import { useSyncExternalStore } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { FolderKey } from "@dig/schemas";
+import { api } from "./api";
+import { queryClient } from "./query";
+import { notifyError } from "./toast";
 
 /*
-  Events are a FRONTEND-ONLY grouping. The API has jobs but no "event" entity
-  above them, so events — and which job fills which folder — live in
-  localStorage for now. Replace this module with real endpoints once the
-  backend grows an events table.
+  Events belong to the signed-in user and live in the API's database. Each event has one folder per
+  research intent; a folder points at the search whose results it shows.
 */
 
-export type FolderKey = "sponsors" | "judges" | "speakers";
+export type { FolderKey };
 
-export const FOLDERS: Array<{ key: FolderKey; label: string; live: boolean }> = [
-  { key: "sponsors", label: "Sponsors", live: true },
-  { key: "judges", label: "Judges & Mentors", live: false },
-  { key: "speakers", label: "Speakers", live: false },
+export const FOLDERS: Array<{ key: FolderKey; label: string; noun: string; example: string }> = [
+  { key: "sponsors", label: "Sponsors", noun: "sponsor", example: "Find sponsors for hackathons in India" },
+  { key: "judges", label: "Judges & Mentors", noun: "judge or mentor", example: "AI researchers who could judge our hackathon in Delhi" },
+  { key: "jobs", label: "Jobs", noun: "job", example: "Frontend internships in Bangalore" },
+  { key: "leads", label: "Leads", noun: "lead", example: "D2C skincare brands in Mumbai we could pitch our analytics tool to" },
+  { key: "competitors", label: "Competitors", noun: "competitor", example: "What are the alternatives to Notion?" },
 ];
 
 export interface DigEvent {
@@ -24,101 +28,64 @@ export interface DigEvent {
   favourite: boolean;
   archived: boolean;
   openedAt: string;
-  /** folder → the job whose dataset that folder shows */
+  folderNames: Partial<Record<FolderKey, string>>;
+  /** folder → the search whose results that folder shows */
   jobs: Partial<Record<FolderKey, string>>;
-  /** folder → the name the user gave it, when renamed */
-  folderNames?: Partial<Record<FolderKey, string>>;
 }
 
-export const ORG_NAME = "Geek Room";
-const KEY = "dig-events-v1";
+export type EventFields = Pick<DigEvent, "name" | "description" | "date" | "targets">;
 
-const SEED: DigEvent[] = [
-  {
-    id: "code-cubicle-6",
-    name: "Code Cubicle 6.0",
-    description: "6th season of Geek Room’s flagship hackathon.",
-    date: "Nov 14–15",
-    targets: "15+ sponsors, 8 judges, 20 student teams",
-    favourite: true,
-    archived: false,
-    openedAt: "2026-09-27T10:00:00.000Z",
-    jobs: {},
-  },
-  {
-    id: "university-tech-talk",
-    name: "University Tech Talk",
-    description: "An evening talk series for first- and second-year students.",
-    date: "Dec 3",
-    targets: "3 speakers, 2 sponsors",
-    favourite: false,
-    archived: false,
-    openedAt: "2026-09-26T10:00:00.000Z",
-    jobs: {},
-  },
-];
+export const ROOT_CRUMB = "Events";
 
-let cache: DigEvent[] | null = null;
-const listeners = new Set<() => void>();
-
-function load(): DigEvent[] {
-  if (cache) return cache;
-  try {
-    const raw = localStorage.getItem(KEY);
-    cache = raw ? (JSON.parse(raw) as DigEvent[]) : SEED;
-  } catch {
-    cache = SEED;
-  }
-  return cache;
+export function useEvents() {
+  const query = useQuery({
+    queryKey: ["events"],
+    queryFn: async () => (await api<{ events: DigEvent[] }>("/api/events")).events,
+  });
+  return { events: query.data ?? [], loading: query.isLoading, error: query.error };
 }
 
-function save(next: DigEvent[]) {
-  cache = next;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // storage blocked: keep the in-memory copy for this session
-  }
-  for (const listener of listeners) listener();
-}
-
-export function useEvents(): DigEvent[] {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    load,
+function store(event: DigEvent) {
+  queryClient.setQueryData<DigEvent[]>(["events"], (list) =>
+    list ? (list.some((item) => item.id === event.id) ? list.map((item) => (item.id === event.id ? event : item)) : [event, ...list]) : [event],
   );
 }
 
-export function updateEvent(id: string, patch: Partial<DigEvent>) {
-  save(load().map((event) => (event.id === id ? { ...event, ...patch } : event)));
+export function eventStored(event: DigEvent) {
+  store(event);
 }
 
-export function linkJob(id: string, folder: FolderKey, jobId: string) {
-  const event = load().find((item) => item.id === id);
-  if (event) updateEvent(id, { jobs: { ...event.jobs, [folder]: jobId } });
+type EventPatch = Partial<EventFields> & {
+  favourite?: boolean;
+  archived?: boolean;
+  touched?: boolean;
+  folderNames?: Partial<Record<FolderKey, string>>;
+  jobs?: Partial<Record<FolderKey, string | null>>;
+};
+
+/** Saves a change to an event. Failures are shown as a notice; resolves to the saved event, or undefined. */
+export async function updateEvent(id: string, patch: EventPatch): Promise<DigEvent | undefined> {
+  try {
+    const { event } = await api<{ event: DigEvent }>(`/api/events/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    store(event);
+    return event;
+  } catch (error) {
+    notifyError(error);
+    return undefined;
+  }
 }
 
-export function createEvent(input: Pick<DigEvent, "name" | "description" | "date" | "targets">): DigEvent {
-  const base = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "event";
-  let id = base;
-  for (let n = 2; load().some((event) => event.id === id); n += 1) id = `${base}-${n}`;
-  const event: DigEvent = { ...input, id, favourite: false, archived: false, openedAt: new Date().toISOString(), jobs: {} };
-  save([event, ...load()]);
+export async function createEvent(input: EventFields): Promise<DigEvent> {
+  const { event } = await api<{ event: DigEvent }>("/api/events", { method: "POST", body: JSON.stringify(input) });
+  store(event);
   return event;
 }
 
+export const linkJob = (id: string, folder: FolderKey, jobId: string) => updateEvent(id, { jobs: { [folder]: jobId } });
+export const unlinkJob = (id: string, folder: FolderKey) => updateEvent(id, { jobs: { [folder]: null } });
+export const renameFolder = (id: string, folder: FolderKey, name: string) => updateEvent(id, { folderNames: { [folder]: name } });
+export const touchEvent = (id: string) => updateEvent(id, { touched: true });
+
 export function folderLabel(event: DigEvent, key: FolderKey): string {
   return event.folderNames?.[key] || (FOLDERS.find((folder) => folder.key === key)?.label ?? key);
-}
-
-export function renameFolder(id: string, key: FolderKey, name: string) {
-  const event = load().find((item) => item.id === id);
-  if (event) updateEvent(id, { folderNames: { ...event.folderNames, [key]: name } });
-}
-
-export function touchEvent(id: string) {
-  updateEvent(id, { openedAt: new Date().toISOString() });
 }

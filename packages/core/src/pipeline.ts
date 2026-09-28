@@ -400,7 +400,10 @@ function covers(fields: Record<string, string>, sources: ProvenanceSource[], req
 }
 
 function label(record: { fields: Record<string, string> }): string {
-  return record.fields.company_name || record.fields.event_name || record.fields.program_name || record.fields.product_name || record.fields.segment || "Record";
+  const f = record.fields;
+  if (f.person_name) return f.person_name;
+  if (f.role_title) return f.company_name ? `${f.role_title} — ${f.company_name}` : f.role_title;
+  return f.company_name || f.event_name || f.program_name || f.product_name || f.segment || "Record";
 }
 
 function remarkFor(record: Draft, pending: ConflictDraft[], rank: number): PublishedRecord["annotation"] {

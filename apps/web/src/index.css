@@ -236,7 +236,7 @@ button.mk-link { background: none; border: 0; padding: 0; }
 .mk-person:hover { color: var(--amber); }
 .mk-person svg { vertical-align: -2px; }
 
-/* Why Dig / Coming soon */
+/* Why Dig */
 .mk-page { background: radial-gradient(ellipse 70% 540px at 50% 120px, #36251599, transparent 70%), var(--cave); }
 .mk-page .landing-nav { position: relative; }
 .px-heading { overflow-wrap: anywhere; color: var(--cream); font-size: clamp(18px, 2.4vw, 26px); font-weight: 700; margin: 0; letter-spacing: 0.02em; }
@@ -263,10 +263,6 @@ button.mk-link { background: none; border: 0; padding: 0; }
 /* Each section fades in and slides up the first time it scrolls into view. */
 .reveal { opacity: 0; transform: translateY(28px); transition: opacity 600ms ease, transform 600ms ease; }
 .reveal.in { opacity: 1; transform: none; }
-.soon-page { display: flex; flex-direction: column; min-height: 100vh; }
-.soon { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 20px 60px; }
-.soon-title { font-size: clamp(44px, 6.5vw, 76px); font-weight: 800; letter-spacing: -0.02em; margin: 22px 0 18px; }
-.soon .why-lede { font-size: clamp(15px, 1.4vw, 18px); margin-bottom: 38px; }
 
 /* Phones: the two-column blocks stack, and the hero copy and CTAs move above and below the art. */
 @media (max-width: 720px) {
@@ -605,3 +601,85 @@ a.avatar:hover { background: #d9853c; }
 .diglett-panel a { display: block; padding: 6px 8px; margin: 0 -8px; border-radius: 6px; color: var(--link); text-decoration: none; }
 .diglett-panel a:hover { background: var(--hover); }
 .diglett-panel .tip { font-size: 12px; margin: 10px 0 0; }
+
+/* App-wide notices (failed saves, network errors) */
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 100; display: grid; gap: 8px; max-width: min(420px, calc(100vw - 40px)); }
+.toast {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.45;
+  background: #1d1d1f; color: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+.toast.error { background: #b3261e; }
+.toast span { flex: 1; }
+.toast button { background: none; border: 0; color: inherit; padding: 2px; opacity: 0.8; }
+.toast button:hover { opacity: 1; }
+
+/* Session check / server unreachable */
+.boot { min-height: 100vh; display: grid; place-items: center; background: var(--backdrop); color: var(--text-2); font-size: 14px; text-align: center; padding: 24px; }
+.boot b { color: var(--text); font-size: 16px; }
+.boot p { margin: 6px 0 14px; }
+
+/* Auth field errors */
+.auth-err { color: #ff9b8a; font-size: 12.5px; margin: 6px 0 0; }
+.auth-err.form { margin-top: 14px; text-align: center; }
+.auth-card input[aria-invalid="true"] { border-color: #e0644f; }
+.px-btn:disabled { opacity: 0.7; cursor: default; }
+
+.hint-line { font-size: 13px; color: var(--text-3); margin: 0 0 18px; }
+
+/* New query: example chips and the "what Dig understood" line */
+.sheet .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sheet .examples button { border: 1px solid #d5d5d8; background: #f7f7f8; border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--text-2); }
+.sheet .examples button:hover { background: #ececef; color: var(--text); }
+.sheet .notice.ok { background: #eef6ee; border-color: #bfdcbf; color: #245a26; }
+
+/* Job Board: click the title to rename it */
+.title-view { margin: 0 0 4px; }
+.title-view button {
+  font: inherit; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); background: none; border: 0;
+  padding: 0 4px; margin-left: -4px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; text-align: left;
+}
+.title-view button:hover { background: #f1f1f3; }
+.title-pencil { color: var(--text-3); opacity: 0; }
+.title-view button:hover .title-pencil, .title-view button:focus-visible .title-pencil { opacity: 1; }
+.title-edit {
+  font: inherit; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; width: min(640px, 100%); box-sizing: border-box;
+  border: 1px solid var(--blue); border-radius: 7px; padding: 1px 6px; margin: 0 0 4px -7px; outline: none; box-shadow: 0 0 0 3px rgba(43, 134, 214, 0.18);
+}
+
+/* Outreach tracking */
+.data-grid td.oc { width: 64px; text-align: center; }
+.ob {
+  width: 26px; height: 22px; border-radius: 6px; border: 1px solid #d5d5d8; background: #fff; color: #8e8e93;
+  display: inline-grid; place-items: center; padding: 0;
+}
+.ob:hover { border-color: #b0b0b5; }
+.ob.interested { background: #e3f3e6; border-color: #9fd3aa; color: #1f7a35; }
+.ob.declined { background: #fdecea; border-color: #f0b4ad; color: #c62828; }
+.data-grid td.note { max-width: 220px; min-width: 120px; color: #3a3a3c; cursor: text; }
+.data-grid td.note.empty { color: #c7c7cc; }
+.data-grid tr:hover td.note.empty { color: #8e8e93; }
+.data-grid td.note.editing { padding: 3px 6px; }
+.data-grid td.note input { width: 100%; box-sizing: border-box; font: inherit; border: 1px solid var(--blue); border-radius: 5px; padding: 4px 6px; outline: none; }
+.outreach-sum { color: var(--text-2); }
+
+/* Ask Diglett chat */
+.diglett-panel.chat { width: 330px; padding: 0; display: flex; flex-direction: column; max-height: min(520px, calc(100% - 140px)); overflow: hidden; }
+.chat-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--hairline); }
+.chat-head img { width: 24px; height: 24px; border-radius: 50%; }
+.chat-head b { flex: 1; font-size: 13.5px; }
+.chat-head button { border: 0; background: none; color: var(--text-3); padding: 3px; border-radius: 5px; display: grid; }
+.chat-head button:hover { background: var(--hover); color: var(--text); }
+.chat-list { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.bubble { max-width: 86%; padding: 8px 11px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+.bubble.bot { align-self: flex-start; background: #f2f2f4; color: var(--text); border-bottom-left-radius: 4px; }
+.bubble.you { align-self: flex-end; background: var(--blue); color: #fff; border-bottom-right-radius: 4px; }
+.bubble a { display: inline; padding: 0; margin: 0; color: var(--link); font-weight: 600; }
+.bubble a:hover { background: none; text-decoration: underline; }
+.chat-suggest { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 12px 10px; }
+.chat-suggest button { border: 1px solid #d5d5d8; background: #fff; border-radius: 999px; padding: 3px 9px; font-size: 11.5px; color: var(--text-2); }
+.chat-suggest button:hover { background: #f4f4f5; color: var(--text); }
+.chat-input { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--hairline); }
+.chat-input input { flex: 1; min-width: 0; border: 1px solid #d5d5d8; border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; }
+.chat-input input:focus { border-color: var(--blue); }
+.chat-input button { border: 0; border-radius: 8px; background: var(--blue); color: #fff; width: 34px; display: grid; place-items: center; }
+.chat-input button:disabled { opacity: 0.45; cursor: default; }

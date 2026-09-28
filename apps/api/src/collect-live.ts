@@ -3,13 +3,14 @@ import path from "node:path";
 import { PipelineError, domainOf, intentDefinition, slug, normalizeDate } from "@dig/core";
 import type { CollectedRecord, ProvenanceSource } from "@dig/core";
 import type { CollectionBlueprint } from "@dig/schemas";
-import { env, repoRoot } from "./env.js";
+import { collectIntent } from "./collect-intents.js";
+import { env } from "./env.js";
 
 // ---------------------------------------------------------------------------
 // Tavily
 // ---------------------------------------------------------------------------
 
-interface TavilyResult {
+export interface TavilyResult {
   title: string;
   url: string;
   content: string;
@@ -21,17 +22,34 @@ interface TavilyResponse {
   results?: TavilyResult[];
 }
 
-interface SearchPlan {
+export interface SearchPlan {
   query: string;
   includeDomains?: string[];
   depth?: "basic" | "advanced";
   maxResults?: number;
   rawContent?: boolean;
+  /** Return up to 3 relevant chunks per page as `content` (advanced depth only). */
+  chunks?: boolean;
 }
 
 const HACKATHON_PATTERN = /\bhackathon(s)?\b|\bhack[\s-]?(the|for|day|fest)\b|\bdevpost\b|\bunstop\b|\bdevfolio\b|\bhackerearth\b/i;
 
-async function tavilySearch(plan: SearchPlan): Promise<TavilyResult[]> {
+/** Turns a Tavily HTTP error into a message a person can act on. */
+export function searchError(status: number): PipelineError {
+  if (status === 432 || status === 433) {
+    return new PipelineError(
+      "SEARCH_QUOTA",
+      "The web-search quota for this Tavily API key is used up. Add credits on tavily.com or put a fresh TAVILY_API_KEY in .env, then run the search again.",
+    );
+  }
+  if (status === 429) return new PipelineError("SEARCH_RATE_LIMITED", "The web search is rate limited right now. Wait a minute, then run the search again.", true);
+  if (status === 401 || status === 403) {
+    return new PipelineError("SEARCH_AUTH", "The Tavily API key in .env was rejected. Check TAVILY_API_KEY, then run the search again.");
+  }
+  return new PipelineError("SOURCE_UNAVAILABLE", `The web search service returned an error (${status}). Try again in a minute.`, status >= 500);
+}
+
+export async function tavilySearch(plan: SearchPlan): Promise<TavilyResult[]> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -43,18 +61,19 @@ async function tavilySearch(plan: SearchPlan): Promise<TavilyResult[]> {
       include_answer: false,
       include_raw_content: plan.rawContent ? "text" : false,
       ...(plan.includeDomains ? { include_domains: plan.includeDomains } : {}),
+      ...(plan.chunks ? { chunks_per_source: 3 } : {}),
     }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
-    throw new PipelineError("SOURCE_UNAVAILABLE", `Tavily search failed (${response.status}).`, response.status >= 500);
+    throw searchError(response.status);
   }
   const body = (await response.json()) as TavilyResponse;
   return body.results ?? [];
 }
 
 /** One batched /extract call. Never throws: a URL that cannot be fetched is simply absent from the map. */
-async function tavilyExtract(urls: string[]): Promise<Map<string, string>> {
+export async function tavilyExtract(urls: string[]): Promise<Map<string, string>> {
   const pages = new Map<string, string>();
   if (urls.length === 0) return pages;
   try {
@@ -85,7 +104,7 @@ const CHAT_ENDPOINTS: Record<string, string> = {
   groq: "https://api.groq.com/openai/v1/chat/completions",
 };
 
-interface Lane {
+export interface Lane {
   model: string;
   capacity: number;
   remaining: number;
@@ -95,7 +114,7 @@ interface Lane {
 
 const laneState = new Map<string, Lane>();
 
-function llmLanes(): Lane[] {
+export function llmLanes(): Lane[] {
   const endpoint = CHAT_ENDPOINTS[env.llmProvider];
   if (!endpoint || !env.llmKey) {
     throw new PipelineError(
@@ -145,7 +164,7 @@ function retryAfterMs(headers: Headers): number {
 }
 
 /** Calls one lane, pacing against its token bucket and retrying 429s. Returns parsed JSON, or null on failure. */
-async function chatJson<T>(
+export async function chatJson<T>(
   lane: Lane,
   input: { system: string; user: string; maxTokens: number; deadline: number; label: string; handBack?: boolean },
 ): Promise<T | null> {
@@ -267,7 +286,7 @@ function entityLabel(fields: Record<string, string>): string | null {
 }
 
 /** Literal windows of `text` around each value, so the excerpt itself evidences every grounded field. */
-function excerptAround(text: string, values: string[], radius = 120): string {
+export function excerptAround(text: string, values: string[], radius = 120): string {
   const lower = text.toLowerCase();
   const spans: Array<[number, number]> = [];
   for (const value of values) {
@@ -286,7 +305,7 @@ function excerptAround(text: string, values: string[], radius = 120): string {
   return merged.map(([start, end]) => text.slice(start, end).replace(/\s+/g, " ").trim()).join(" … ");
 }
 
-function provenance(input: {
+export function provenance(input: {
   url: string;
   title: string;
   text: string;
@@ -316,98 +335,6 @@ function provenance(input: {
       demo: false,
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Generic single-search collection (every intent other than SPONSOR_LOOKUP)
-// ---------------------------------------------------------------------------
-
-function buildSearchPlan(blueprint: CollectionBlueprint): SearchPlan {
-  if (blueprint.intent === "JOB_LOOKUP") {
-    return { query: `${blueprint.query} careers open positions apply` };
-  }
-  return { query: blueprint.query };
-}
-
-interface ExtractedRecord {
-  sourceIndex: number;
-  fields: Record<string, string>;
-}
-
-const DEFAULT_SYSTEM_PROMPT =
-  "You extract structured business records from web search results. Each result has a " +
-  "title and a body — both are literal source text you may copy from, and a result's " +
-  "title very often IS the event, program, or organization name even when the body " +
-  "never restates it, so check the title for identity-type fields before leaving them out. " +
-  "Only use facts that literally appear in the given content — copy values verbatim, " +
-  "never paraphrase, infer, or fill in a value that is not written in the text. " +
-  "If a field is not stated in any result, leave it out entirely. " +
-  "Skip a result if it does not name a real, identifiable entity for this request. " +
-  "Prefer a result that describes one entity with real detail (a role, a date, a contact, " +
-  "a tier) over a result that only lists names in passing, such as a logo strip or a " +
-  "generic partner mention with no other information about that entity. If a result only " +
-  "names entities without any other detail about them, extract nothing from it.";
-
-async function extractRecords(blueprint: CollectionBlueprint, results: TavilyResult[]): Promise<ExtractedRecord[]> {
-  const definition = intentDefinition(blueprint.intent);
-  const [lane] = llmLanes();
-  const catalog = results
-    .map((result, index) => {
-      const published = result.published_date ? ` | published ${result.published_date}` : "";
-      return `[${index}] ${result.title}\nURL: ${result.url}${published}\n${result.content.slice(0, 700)}`;
-    })
-    .join("\n\n");
-  const parsed = await chatJson<{ records?: ExtractedRecord[] }>(lane as Lane, {
-    system:
-      DEFAULT_SYSTEM_PROMPT +
-      ` Return strict JSON: {"records":[{"sourceIndex": <index of the result it came from>, "fields": {<only these keys: ${definition.fields.join(", ")}>}}]}.`,
-    user:
-      `Request: "${blueprint.query}"\nIntent: ${blueprint.intent} — ${definition.description}\n` +
-      `Required fields for a usable record: ${definition.requiredFields.join(", ")}\n\nSearch results:\n\n${catalog}`,
-    maxTokens: 4000,
-    deadline: Date.now() + 90_000,
-    label: "extract",
-  });
-  if (!parsed) {
-    throw new PipelineError("LLM_UNAVAILABLE", "The extraction call failed or was rate limited.", true);
-  }
-  return Array.isArray(parsed.records) ? parsed.records : [];
-}
-
-async function collectSimple(blueprint: CollectionBlueprint, collectedAt: string): Promise<CollectedRecord[]> {
-  const results = await tavilySearch(buildSearchPlan(blueprint));
-  if (results.length === 0) {
-    throw new PipelineError("SOURCE_UNAVAILABLE", "The search returned no results for this query.", true);
-  }
-  const extracted = await extractRecords(blueprint, results);
-
-  const records: CollectedRecord[] = [];
-  const seen = new Set<string>();
-  for (const item of extracted) {
-    const result = results[item.sourceIndex];
-    if (!result || !item.fields) continue;
-    const claims: Record<string, string> = { ...item.fields, source_url: result.url };
-    if (!claims.last_verified) {
-      claims.last_verified = result.published_date ? normalizeDate(result.published_date) : collectedAt.slice(0, 10);
-    }
-    const grounded = provenance({
-      url: result.url,
-      title: result.title,
-      text: result.content,
-      publishedAt: result.published_date ? normalizeDate(result.published_date) : "",
-      sourceType: "web_search",
-      extractionMethod: "tavily+llm",
-      claims,
-    });
-    if (!grounded) continue;
-    const label = entityLabel(grounded.fields);
-    if (!label) continue;
-    const canonicalEntityId = slug(label);
-    if (seen.has(canonicalEntityId)) continue;
-    seen.add(canonicalEntityId);
-    records.push({ canonicalEntityId, fields: grounded.fields, sources: [grounded.source] });
-  }
-  return records;
 }
 
 // ---------------------------------------------------------------------------
@@ -558,6 +485,8 @@ async function gatherSponsorPages(blueprint: CollectionBlueprint): Promise<Sourc
   const kind = eventKindOf(blueprint.query);
   const plans = sponsorSearchPlans(blueprint);
   const settled = await Promise.allSettled(plans.map((plan) => tavilySearch(plan)));
+  const failure = settled.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+  if (failure && settled.every((outcome) => outcome.status === "rejected")) throw failure.reason;
 
   const byKey = new Map<string, TavilyResult>();
   settled.forEach((outcome, index) => {
@@ -821,7 +750,7 @@ function acceptSponsors(batch: SourceDoc[], parsed: SponsorBatchResponse | null,
 
 // --- contact enrichment (deterministic) ------------------------------------
 
-interface ContactFinding {
+export interface ContactFinding {
   url: string;
   title: string;
   publishedAt: string;
@@ -894,7 +823,7 @@ function findPhone(text: string): string | null {
 // evidence rather than the conclusions means improving the matching never needs fresh Tavily credits.
 type CachedLookup = { at: number; results: TavilyResult[] };
 let contactCache: Map<string, CachedLookup> | null = null;
-const contactCacheFile = path.join(repoRoot, "data", "cache", "sponsor-contact-pages.json");
+const contactCacheFile = path.join(env.cacheDir, "sponsor-contact-pages.json");
 
 function loadContactCache() {
   if (contactCache) return contactCache;
@@ -965,7 +894,7 @@ async function contactPages(name: string): Promise<TavilyResult[]> {
   return trimmed;
 }
 
-async function findContact(name: string): Promise<ContactFinding[]> {
+export async function findContact(name: string): Promise<ContactFinding[]> {
   const results = await contactPages(name);
   const official = results.find((result) => isOwnDomain(domainOf(result.url), name));
   const officialHost = official ? domainOf(official.url) : null;
@@ -1132,8 +1061,7 @@ async function collectSponsors(blueprint: CollectionBlueprint, collectedAt: stri
 
   const docs = await gatherSponsorPages(blueprint);
   if (docs.length === 0) {
-    log("no pages with sponsor sections, falling back to single search");
-    return collectSimple(blueprint, collectedAt);
+    throw new PipelineError("NO_RESULTS", "Dig couldn't find any event pages that list sponsors for this question. Try a broader or differently worded question.");
   }
   const queue = packBatches(docs);
   log(`${queue.length} extraction batches over ${lanes.length} lanes (${lanes.map((lane) => lane.model).join(", ")}) after ${elapsed(started)}`);
@@ -1216,13 +1144,15 @@ async function collectSponsors(blueprint: CollectionBlueprint, collectedAt: stri
     `done in ${elapsed(started)}: ${records.length} sponsors — email ${count("email")}, phone ${count("phone")}, ` +
       `contact ${count("contact")}, website ${count("website")}, tier ${count("sponsorship_type")}`,
   );
-  if (records.length === 0) return collectSimple(blueprint, collectedAt);
+  if (records.length === 0) {
+    throw new PipelineError("NO_RESULTS", "Dig found sponsor pages but couldn't quote any sponsor from them. Try a broader or differently worded question.");
+  }
   return records;
 }
 
 // ---------------------------------------------------------------------------
 
-function limiter(concurrency: number) {
+export function limiter(concurrency: number) {
   let active = 0;
   const waiting: Array<() => void> = [];
   return async function run<T>(task: () => Promise<T>): Promise<T> {
@@ -1237,7 +1167,7 @@ function limiter(concurrency: number) {
   };
 }
 
-function sleep(ms: number) {
+export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -1245,11 +1175,11 @@ function elapsed(started: number) {
   return `${((Date.now() - started) / 1000).toFixed(1)}s`;
 }
 
-function errorMessage(error: unknown) {
+export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function log(...parts: unknown[]) {
+export function log(...parts: unknown[]) {
   console.log("[collect-live]", ...parts);
 }
 
@@ -1260,5 +1190,5 @@ export async function collectLive(blueprint: CollectionBlueprint, collectedAt: s
   if (blueprint.intent === "SPONSOR_LOOKUP") {
     return collectSponsors(blueprint, collectedAt);
   }
-  return collectSimple(blueprint, collectedAt);
+  return collectIntent(blueprint, collectedAt);
 }

@@ -243,3 +243,46 @@ CREATE INDEX IF NOT EXISTS idx_evidence_record ON evidence(record_id);
 CREATE INDEX IF NOT EXISTS idx_conflicts_job ON conflicts(job_id, status);
 CREATE INDEX IF NOT EXISTS idx_sources_version ON sources(dataset_version_id);
 CREATE INDEX IF NOT EXISTS idx_versions_job ON dataset_versions(job_id, version_number);
+
+-- Accounts: users.password_hash / users.role are added by DigDb.migrate() so existing databases upgrade in place.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- Events group a user's searches into folders (sponsors, judges, jobs, leads, competitors).
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL DEFAULT '',
+  targets TEXT NOT NULL DEFAULT '',
+  favourite INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  folder_names_json TEXT NOT NULL DEFAULT '{}',
+  jobs_json TEXT NOT NULL DEFAULT '{}',
+  opened_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
+
+-- Outreach tracking: who has been contacted, per result. Scoped to the event folder a search is filed in
+-- ("<event id>:<intent>"), or to the search itself when it isn't filed, so it survives re-runs.
+CREATE TABLE IF NOT EXISTS outreach (
+  scope TEXT NOT NULL,
+  canonical_entity_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  note TEXT NOT NULL DEFAULT '',
+  updated_by TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (scope, canonical_entity_id)
+);

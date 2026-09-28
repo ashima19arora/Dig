@@ -1,21 +1,24 @@
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
-import { ORG_NAME } from "./events";
+import { ROOT_CRUMB } from "./events";
 import { Auth } from "./pages/Auth";
-import { ComingSoon } from "./pages/ComingSoon";
 import { Dashboard } from "./pages/Dashboard";
+import { DevLog } from "./pages/DevLog";
 import { EventFolder } from "./pages/EventFolder";
 import { FolderBoard } from "./pages/FolderBoard";
 import { JobBoard } from "./pages/JobBoard";
-import { DevLog } from "./pages/DevLog";
+import { Landing } from "./pages/Landing";
 import { Profile } from "./pages/Profile";
 import { Stack } from "./pages/Stack";
-import { Landing } from "./pages/Landing";
 import { WhyDig } from "./pages/WhyDig";
+import { RequireAuth } from "./session";
 
 function StandaloneJobBoard() {
   const { jobId = "" } = useParams();
-  return <JobBoard jobId={jobId} crumbs={[{ label: ORG_NAME, to: "/dashboard" }, { label: "Job Board" }]} />;
+  return <JobBoard jobId={jobId} crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Job Board" }]} />;
 }
+
+const app = (screen: ReactNode) => <RequireAuth>{screen}</RequireAuth>;
 
 export function App() {
   return (
@@ -24,17 +27,13 @@ export function App() {
       <Route path="/why" element={<WhyDig />} />
       <Route path="/dev-log" element={<DevLog />} />
       <Route path="/stack" element={<Stack />} />
-      <Route
-        path="/guide"
-        element={<ComingSoon kicker="GUIDE" blurb="A walkthrough of how to use Dig — asking a question, reading the results, and resolving conflicts. It’s on its way." />}
-      />
       <Route path="/login" element={<Auth mode="login" />} />
       <Route path="/signup" element={<Auth mode="signup" />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/profile" element={<Profile />} />
-      <Route path="/events/:eventId" element={<EventFolder />} />
-      <Route path="/events/:eventId/:folder" element={<FolderBoard />} />
-      <Route path="/jobs/:jobId" element={<StandaloneJobBoard />} />
+      <Route path="/dashboard" element={app(<Dashboard />)} />
+      <Route path="/profile" element={app(<Profile />)} />
+      <Route path="/events/:eventId" element={app(<EventFolder />)} />
+      <Route path="/events/:eventId/:folder" element={app(<FolderBoard />)} />
+      <Route path="/jobs/:jobId" element={app(<StandaloneJobBoard />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

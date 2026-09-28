@@ -22,10 +22,198 @@ export class DigDb {
     this.db.exec("PRAGMA foreign_keys = ON;");
   }
 
+  /** Safe to run on every start: only creates what is missing, never drops or reseeds. */
   migrate() {
     const sql = readFileSync(env.schemaPath, "utf8");
     this.db.exec(sql);
+    this.addColumn("users", "password_hash", "password_hash TEXT");
+    this.addColumn("users", "role", "role TEXT NOT NULL DEFAULT ''");
     this.failDangling();
+  }
+
+  private addColumn(table: string, column: string, ddl: string) {
+    const columns = this.all<{ name: string }>(`PRAGMA table_info(${table})`);
+    if (!columns.some((item) => item.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Accounts and sessions. Every user owns one workspace; jobs are scoped to it.
+  // ---------------------------------------------------------------------------
+
+  createUser(input: { name: string; email: string; passwordHash: string }) {
+    const now = new Date().toISOString();
+    const user = { id: crypto.randomUUID(), name: input.name, email: input.email, role: "" };
+    const workspace = { id: crypto.randomUUID(), name: `${input.name}’s workspace` };
+    this.transaction(() => {
+      this.run(
+        "INSERT INTO users (id, name, email, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, '', ?, ?)",
+        user.id,
+        user.name,
+        user.email,
+        input.passwordHash,
+        now,
+        now,
+      );
+      this.run("INSERT INTO workspaces (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", workspace.id, workspace.name, user.id, now, now);
+    });
+    return { user, workspace };
+  }
+
+  userByEmail(email: string) {
+    return this.get<{ id: string; name: string; email: string; role: string; password_hash: string | null }>(
+      "SELECT id, name, email, role, password_hash FROM users WHERE email = ?",
+      email,
+    );
+  }
+
+  updateUser(id: string, patch: { name: string; role: string }) {
+    this.run("UPDATE users SET name = ?, role = ?, updated_at = ? WHERE id = ?", patch.name, patch.role, new Date().toISOString(), id);
+  }
+
+  createSession(tokenHash: string, userId: string, ttlMs: number) {
+    const now = Date.now();
+    this.run("DELETE FROM sessions WHERE expires_at < ?", new Date(now).toISOString());
+    this.run(
+      "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+      tokenHash,
+      userId,
+      new Date(now).toISOString(),
+      new Date(now + ttlMs).toISOString(),
+    );
+  }
+
+  deleteSession(tokenHash: string) {
+    this.run("DELETE FROM sessions WHERE token_hash = ?", tokenHash);
+  }
+
+  /** The signed-in user and their workspace for a session token, or undefined if it's unknown or expired. */
+  session(tokenHash: string) {
+    const row = this.get<{ id: string; name: string; email: string; role: string; workspace_id: string; workspace_name: string }>(
+      `SELECT u.id, u.name, u.email, u.role, w.id AS workspace_id, w.name AS workspace_name
+       FROM sessions s JOIN users u ON u.id = s.user_id JOIN workspaces w ON w.owner_id = u.id
+       WHERE s.token_hash = ? AND s.expires_at > ?`,
+      tokenHash,
+      new Date().toISOString(),
+    );
+    if (!row) return undefined;
+    return {
+      user: { id: row.id, name: row.name, email: row.email, role: row.role },
+      workspace: { id: row.workspace_id, name: row.workspace_name },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Events (per user)
+  // ---------------------------------------------------------------------------
+
+  listEvents(userId: string) {
+    return this.all<EventRow>("SELECT * FROM events WHERE user_id = ? ORDER BY opened_at DESC", userId).map(mapEvent);
+  }
+
+  eventFor(id: string, userId: string) {
+    const row = this.get<EventRow>("SELECT * FROM events WHERE id = ? AND user_id = ?", id, userId);
+    return row ? mapEvent(row) : undefined;
+  }
+
+  createEvent(userId: string, input: { name: string; description: string; date: string; targets: string }) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    this.run(
+      `INSERT INTO events (id, user_id, name, description, date, targets, favourite, archived, folder_names_json, jobs_json, opened_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, 0, '{}', '{}', ?, ?, ?)`,
+      id,
+      userId,
+      input.name,
+      input.description,
+      input.date,
+      input.targets,
+      now,
+      now,
+      now,
+    );
+    return this.eventFor(id, userId)!;
+  }
+
+  updateEvent(
+    id: string,
+    userId: string,
+    patch: Partial<{
+      name: string;
+      description: string;
+      date: string;
+      targets: string;
+      favourite: boolean;
+      archived: boolean;
+      touched: boolean;
+      folderNames: Record<string, string>;
+      jobs: Record<string, string | null>;
+    }>,
+  ) {
+    const current = this.eventFor(id, userId);
+    if (!current) return undefined;
+    const now = new Date().toISOString();
+    const jobs: Record<string, string> = { ...current.jobs };
+    for (const [folder, jobId] of Object.entries(patch.jobs ?? {})) {
+      if (jobId) jobs[folder] = jobId;
+      else delete jobs[folder];
+    }
+    this.run(
+      `UPDATE events SET name = ?, description = ?, date = ?, targets = ?, favourite = ?, archived = ?, folder_names_json = ?, jobs_json = ?, opened_at = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+      patch.name ?? current.name,
+      patch.description ?? current.description,
+      patch.date ?? current.date,
+      patch.targets ?? current.targets,
+      (patch.favourite ?? current.favourite) ? 1 : 0,
+      (patch.archived ?? current.archived) ? 1 : 0,
+      JSON.stringify({ ...current.folderNames, ...patch.folderNames }),
+      JSON.stringify(jobs),
+      patch.touched ? now : current.openedAt,
+      now,
+      id,
+      userId,
+    );
+    return this.eventFor(id, userId);
+  }
+
+  /** Where a search's outreach marks live: its event folder if it is filed in one, else the search itself. */
+  outreachScope(jobId: string, intent: string, userId: string) {
+    const event = this.get<{ id: string }>(
+      "SELECT id FROM events WHERE user_id = ? AND jobs_json LIKE ? ORDER BY opened_at DESC LIMIT 1",
+      userId,
+      `%"${jobId}"%`,
+    );
+    return event ? `${event.id}:${intent}` : `job:${jobId}`;
+  }
+
+  outreach(scope: string) {
+    const rows = this.all<{ canonical_entity_id: string; status: string; note: string; updated_at: string; updated_by_name: string | null }>(
+      `SELECT o.canonical_entity_id, o.status, o.note, o.updated_at, u.name AS updated_by_name
+       FROM outreach o LEFT JOIN users u ON u.id = o.updated_by WHERE o.scope = ?`,
+      scope,
+    );
+    return Object.fromEntries(
+      rows.map((row) => [row.canonical_entity_id, { status: row.status, note: row.note, updatedAt: row.updated_at, updatedBy: row.updated_by_name }]),
+    ) as Record<string, { status: string; note: string; updatedAt: string; updatedBy: string | null }>;
+  }
+
+  setOutreach(scope: string, entityId: string, value: { status: string; note: string }, userId: string) {
+    this.run(
+      `INSERT INTO outreach (scope, canonical_entity_id, status, note, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (scope, canonical_entity_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+      scope,
+      entityId,
+      value.status,
+      value.note,
+      userId,
+      new Date().toISOString(),
+    );
+    return this.outreach(scope)[entityId];
+  }
+
+  renameJob(id: string, name: string, actorId: string) {
+    this.run("UPDATE jobs SET name = ?, updated_at = ? WHERE id = ?", name, new Date().toISOString(), id);
+    this.audit(actorId, "job.renamed", "job", id, { name });
   }
 
   private failDangling() {
@@ -848,6 +1036,34 @@ interface JobRow {
   diff_json?: string | null;
 }
 
+interface EventRow {
+  id: string;
+  name: string;
+  description: string;
+  date: string;
+  targets: string;
+  favourite: number;
+  archived: number;
+  folder_names_json: string;
+  jobs_json: string;
+  opened_at: string;
+}
+
+function mapEvent(row: EventRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    date: row.date,
+    targets: row.targets,
+    favourite: Boolean(row.favourite),
+    archived: Boolean(row.archived),
+    folderNames: JSON.parse(row.folder_names_json) as Record<string, string>,
+    jobs: JSON.parse(row.jobs_json) as Record<string, string>,
+    openedAt: row.opened_at,
+  };
+}
+
 interface VersionRow {
   version_number: number | null;
   version_id: string | null;
@@ -1025,5 +1241,8 @@ export function labelFromFields(json: unknown) {
 }
 
 export function labelOf(fields: Record<string, string>) {
-  return fields.company_name || fields.event_name || fields.program_name || fields.product_name || fields.segment || "Record";
+  const f = fields;
+  if (f.person_name) return f.person_name;
+  if (f.role_title) return f.company_name ? `${f.role_title} — ${f.company_name}` : f.role_title;
+  return f.company_name || f.event_name || f.program_name || f.product_name || f.segment || "Record";
 }

@@ -5,6 +5,20 @@ import { emptyProgress, type Progress, type DigDb } from "./db.js";
 import { env } from "./env.js";
 
 const listeners = new Map<string, Set<Response>>();
+
+/** A live search that hasn't finished by now is failed with a clear message rather than left hanging. */
+const RUN_TIMEOUT_MS = 180_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("This search took longer than 3 minutes and was stopped. The web sources may be slow right now — try again.")),
+      ms,
+    );
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
 const running = new Set<string>();
 const cancelled = new Set<string>();
 
@@ -72,9 +86,10 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
       // Live collection is the long part of a run (~1 min): surface it instead of sitting in QUEUED.
       db.setStatus(jobId, "COLLECTING", "QUEUED", runId, { runNumber });
       publish(db, jobId);
-      collected = await collectLive(job.blueprint, now.toISOString());
+      collected = await withTimeout(collectLive(job.blueprint, now.toISOString()), RUN_TIMEOUT_MS);
     }
-    collected = collected.slice(0, env.maxRecords);
+    // Keep the best-corroborated results when a run finds more than the cap.
+    collected = [...collected].sort((a, b) => b.sources.length - a.sources.length).slice(0, env.resultCap);
     const previous = runNumber > 1 ? db.latestRecords(jobId) : null;
     const result = await runPipeline(
       {

@@ -29,8 +29,6 @@ function flag(name: string, fallback: boolean) {
 
 export const env = {
   port: Number(process.env.PORT ?? 8787),
-  // Live web research by default; the fixture path is for tests and the explicit `seed` command only.
-  demo: flag("DEMO_MODE", false),
   pacingMs: Number(process.env.DEMO_STAGE_PACING_MS ?? 380),
   llmEnabled: flag("LLM_ENABLED", true),
   llmProvider: process.env.LLM_PROVIDER ?? "mock",
@@ -42,10 +40,17 @@ export const env = {
     .map((model) => model.trim())
     .filter(Boolean),
   tavilyKey: process.env.TAVILY_API_KEY ?? process.env.SEARCH_API_KEY ?? "",
-  // Each sponsor contact lookup costs one Tavily credit (cached for 7 days per company).
-  sponsorEnrichLimit: Number(process.env.SPONSOR_ENRICH_LIMIT ?? 80),
+  // Results kept per run, for every intent. Sponsor/lead contact lookups (one Tavily credit each, cached 7 days)
+  // follow the same cap.
+  resultCap: Number(process.env.RESULT_CAP ?? 120),
+  get sponsorEnrichLimit() {
+    return this.resultCap;
+  },
   threshold: Number(process.env.JEV_AUTO_THRESHOLD ?? 0.85),
-  maxRecords: Number(process.env.MAX_RECORDS ?? 500),
   databasePath: path.resolve(repoRoot, process.env.DATABASE_PATH ?? "data/dig.db"),
+  // Contact-lookup cache: next to the database by default, so it sits on the same persistent volume.
+  get cacheDir() {
+    return path.resolve(repoRoot, process.env.CACHE_DIR ?? path.join(path.dirname(this.databasePath), "cache"));
+  },
   schemaPath: path.join(repoRoot, "packages/database/schema.sql"),
 };

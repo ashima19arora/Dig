@@ -46,35 +46,64 @@ export interface Progress {
   conflicts: number;
 }
 
-/** Only sponsor research runs end to end this pass; the API refuses other intents with UNSUPPORTED_INTENT. */
-export const SUPPORTED_INTENTS = ["SPONSOR_LOOKUP"];
+/** The intents Dig researches end to end; the API refuses anything else with UNSUPPORTED_INTENT. */
+export const SUPPORTED_INTENTS = ["SPONSOR_LOOKUP", "JUDGE_LOOKUP", "JOB_LOOKUP", "LEAD_LOOKUP", "COMPETITOR_LOOKUP"];
 
 export class ApiError extends Error {
-  constructor(message: string, readonly code: string) {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    /** The form field the error is about, when the server says so. */
+    readonly field: string | null = null,
+  ) {
     super(message);
   }
 }
 
+type ErrorBody = { error?: { message: string; code?: string; details?: { field?: string | null } } };
+
+async function readError(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => null)) as ErrorBody | null;
+  if (!body?.error) {
+    const offline = response.status >= 500 && response.status < 600;
+    return new ApiError(
+      offline ? "Dig’s server isn’t responding. Check that the API is running, then try again." : `Request failed (${response.status}).`,
+      offline ? "SERVER_UNAVAILABLE" : "ERROR",
+      response.status,
+    );
+  }
+  return new ApiError(body.error.message, body.error.code ?? "ERROR", response.status, body.error.details?.field ?? null);
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
-  const body = (await response.json()) as { success: boolean; data: T; error?: { message: string; code?: string } };
-  if (!response.ok || body.success === false) throw new ApiError(body.error?.message ?? "Request failed", body.error?.code ?? "ERROR");
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      credentials: "same-origin",
+      headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+    });
+  } catch {
+    throw new ApiError("Can’t reach Dig’s server. Check your connection and try again.", "NETWORK", 0);
+  }
+  if (!response.ok) {
+    const error = await readError(response);
+    // A session that ended mid-use: drop the cached user so the app sends them back to log in.
+    if (response.status === 401 && !path.startsWith("/api/auth/")) {
+      const { queryClient } = await import("./query");
+      queryClient.setQueryData(["me"], null);
+    }
+    throw error;
+  }
+  const body = (await response.json()) as { success: boolean; data: T };
   return body.data;
 }
 
 /** Downloads a file from the API, surfacing the API's error message instead of saving an error page. */
 export async function download(path: string, fallbackName: string) {
-  const response = await fetch(path);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: { message: string; code?: string } } | null;
-    throw new ApiError(body?.error?.message ?? `Download failed (${response.status})`, body?.error?.code ?? "ERROR");
-  }
+  const response = await fetch(path, { credentials: "same-origin" });
+  if (!response.ok) throw await readError(response);
   const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
   const url = URL.createObjectURL(await response.blob());
   const link = Object.assign(document.createElement("a"), { href: url, download: name });

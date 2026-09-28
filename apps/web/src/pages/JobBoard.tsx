@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, Download, FileText, Filter, Play, RotateCw, Search, Upload, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Check, ChevronDown, Clock, Download, FileText, Filter, Pencil, Play, RotateCw, Search, Upload, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ACTIVE_STATES,
@@ -16,26 +16,39 @@ import {
   type JobProgress,
 } from "../api";
 import { AppWindow, type Crumb } from "../components/Shell";
+import { notifyError } from "../toast";
 
-const COLUMNS: Array<{ key: string; label: string }> = [
-  { key: "company_name", label: "Company" },
-  { key: "event_name", label: "Event" },
-  { key: "sponsorship_type", label: "Type" },
-  { key: "contact", label: "Contact" },
-  { key: "email", label: "Email" },
-  { key: "status", label: "Status" },
-];
+type Pair = [string, string];
 
-const FIELD_CARDS: Array<[string, string]> = [
-  ["company_name", "Company name"],
-  ["event_name", "Event"],
-  ["sponsorship_type", "Sponsorship type"],
-  ["contact", "Contact"],
-  ["email", "Email"],
-  ["phone", "Phone"],
-  ["website", "Website"],
-  ["last_verified", "Last verified"],
-];
+/** What each kind of search shows: table columns (the first is the record's name) and detail cards. */
+const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = {
+  SPONSOR_LOOKUP: {
+    noun: "sponsors",
+    columns: [["company_name", "Company"], ["event_name", "Event"], ["sponsorship_type", "Type"], ["contact", "Contact"], ["email", "Email"]],
+    cards: [["company_name", "Company name"], ["event_name", "Event"], ["sponsorship_type", "Sponsorship type"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["last_verified", "Last verified"]],
+  },
+  JUDGE_LOOKUP: {
+    noun: "people",
+    columns: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Judged / mentored at"], ["email", "Email"]],
+    cards: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Judged / mentored at"], ["email", "Email"], ["profile_url", "Profile"], ["last_verified", "Last verified"]],
+  },
+  JOB_LOOKUP: {
+    noun: "roles",
+    columns: [["role_title", "Role"], ["company_name", "Company"], ["location", "Location"], ["workplace", "Workplace"]],
+    cards: [["role_title", "Role"], ["company_name", "Company"], ["location", "Location"], ["workplace", "Workplace"], ["website", "Website"], ["last_verified", "Last verified"]],
+  },
+  LEAD_LOOKUP: {
+    noun: "leads",
+    columns: [["company_name", "Company"], ["category", "What they do"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"]],
+    cards: [["company_name", "Company"], ["category", "What they do"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["last_verified", "Last verified"]],
+  },
+  COMPETITOR_LOOKUP: {
+    noun: "competitors",
+    columns: [["company_name", "Competitor"], ["category", "Category"], ["pricing_signal", "Pricing"], ["website", "Website"]],
+    cards: [["company_name", "Competitor"], ["category", "Category"], ["pricing_signal", "Pricing signal"], ["website", "Website"], ["last_verified", "Last verified"]],
+  },
+};
+const LINK_FIELDS = new Set(["website", "profile_url"]);
 
 const STAGE_LABELS: Record<string, string> = {
   QUEUED: "Queued",
@@ -77,6 +90,31 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
     queryKey: ["conflicts", jobId],
     queryFn: () => api<{ conflicts: Conflict[] }>(`/api/jobs/${jobId}/conflicts`),
   });
+  const outreachQ = useQuery({
+    queryKey: ["outreach", jobId],
+    queryFn: () => api<{ outreach: Record<string, Outreach> }>(`/api/jobs/${jobId}/outreach`),
+  });
+  const outreach = outreachQ.data?.outreach ?? {};
+  const setOutreach = async (entity: string, patch: Partial<Pick<Outreach, "status" | "note">>) => {
+    const current = outreach[entity] ?? { status: "pending", note: "" };
+    const next = { status: patch.status ?? current.status, note: patch.note ?? current.note };
+    // Show the change immediately; roll back (and say why) if the save fails.
+    client.setQueryData<{ outreach: Record<string, Outreach> }>(["outreach", jobId], (data) => ({
+      outreach: { ...(data?.outreach ?? {}), [entity]: { ...current, ...next } },
+    }));
+    try {
+      const saved = await api<{ outreach: Outreach }>(`/api/jobs/${jobId}/outreach/${encodeURIComponent(entity)}`, {
+        method: "PUT",
+        body: JSON.stringify(next),
+      });
+      client.setQueryData<{ outreach: Record<string, Outreach> }>(["outreach", jobId], (data) => ({
+        outreach: { ...(data?.outreach ?? {}), [entity]: saved.outreach },
+      }));
+    } catch (error) {
+      notifyError(error);
+      void client.invalidateQueries({ queryKey: ["outreach", jobId] });
+    }
+  };
   const diffQ = useQuery({ queryKey: ["diff", jobId], queryFn: () => api<{ diff: Diff | null }>(`/api/jobs/${jobId}/diff`) });
 
   const refreshAll = () => {
@@ -175,7 +213,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
       if (tab === "review" && !needsReview(record)) return false;
       if (tab === "verified" && needsReview(record)) return false;
       if (!needle) return true;
-      return ["company_name", "event_name", "sponsorship_type", "contact", "email"].some((key) =>
+      return (VIEWS[jobQ.data?.job.blueprint.intent ?? ""] ?? VIEWS.SPONSOR_LOOKUP!).columns.some(([key]) =>
         (record.fields[key] ?? "").toLowerCase().includes(needle),
       );
     });
@@ -214,6 +252,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   }, [downloadOpen]);
 
   const job = jobQ.data?.job;
+  const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
   const selected = panel?.kind === "record" ? records.find((record) => record.canonicalEntityId === panel.key) : undefined;
   const reviewCount = records.filter(needsReview).length;
   const progress = live ?? (running ? jobQ.data?.progress : null) ?? null;
@@ -241,8 +280,8 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
           <div className="unsupported">
             <h3>{job.name} isn’t supported yet</h3>
             <p>
-              This search asks for {intentLabel(job.blueprint.intent)}, and Dig can only research <b>sponsors</b> right now — so it
-              won’t run, and there’s no live data to show. Support for more kinds of searches is on the way.
+              This search asks for {intentLabel(job.blueprint.intent)}. Dig researches <b>sponsors, judges &amp; mentors, jobs, leads and
+              competitors</b> right now — so this one won’t run.
             </p>
             <p className="q">Query — “{job.query}”</p>
             <Link to="/dashboard" className="btn blue">
@@ -269,7 +308,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
       <div className="board">
         <div className="board-head">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1>{job?.name ?? "Loading…"}</h1>
+            {job ? <EditableTitle jobId={jobId} name={job.name} /> : <h1>Loading…</h1>}
             {job && <div className="q">Query — “{job.query}”</div>}
           </div>
           <div style={{ display: "flex", gap: 8, position: "relative" }}>
@@ -336,6 +375,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             <span>
               <b>{version.rowCount}</b> records from <b>{version.sourceCount}</b> sources
             </span>
+            <OutreachSummary records={records} outreach={outreach} />
             {version.qualityScore !== null && (
               <span>
                 <b>{Math.round(version.qualityScore)}</b> quality score
@@ -376,7 +416,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
               <span className="err">The last run failed: {live?.error ?? jobQ.data?.progress.error ?? "unknown error"}</span>
             ) : (
               <>
-                <b>{STAGE_LABELS[stageOf(progress)] ?? "Working"}…</b>{" "}
+                <b>{stageOf(progress) === "COLLECTING" ? `Searching the web and extracting ${view.noun}` : STAGE_LABELS[stageOf(progress)] ?? "Working"}…</b>{" "}
                 <span style={{ color: "var(--text-2)" }}>
                   {progress?.progress.records ? `${progress.progress.records} records so far · ` : ""}
                   live web research usually takes about a minute
@@ -423,7 +463,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 </div>
                 <label className="search">
                   <Search size={14} />
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sponsors" />
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${view.noun}`} />
                 </label>
               </div>
               <div className="table-scroll">
@@ -431,9 +471,9 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   <thead>
                     <tr>
                       <th className="n">#</th>
-                      {COLUMNS.map((column) => (
+                      {[...view.columns.map(([key, label]) => ({ key, label })), { key: "status", label: "Verification" }].map((column, index) => (
+                        <Fragment key={column.key}>
                         <th
-                          key={column.key}
                           style={{ cursor: "pointer" }}
                           onClick={() =>
                             setSort((current) =>
@@ -452,12 +492,16 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                             <Filter size={11} className="f" />
                           )}
                         </th>
+                        {index === 0 && <th title="Who has been contacted — click a row’s mark to change it">Outreach</th>}
+                        </Fragment>
                       ))}
+                      <th>Note</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((record) => {
                       const status = statusText(record);
+                      const mark = outreach[record.canonicalEntityId];
                       return (
                         <tr
                           key={record.id}
@@ -465,20 +509,26 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           onClick={() => setPanel({ kind: "record", key: record.canonicalEntityId })}
                         >
                           <td className="n">{record.rank}</td>
-                          <Cell className="co" value={record.fields.company_name} />
-                          <Cell value={record.fields.event_name} />
-                          <Cell value={record.fields.sponsorship_type} />
-                          <Cell value={record.fields.contact} />
-                          <Cell value={record.fields.email} />
+                          {view.columns.map(([key], index) => (
+                            <Fragment key={key}>
+                              <Cell className={index === 0 ? "co" : undefined} value={record.fields[key]} />
+                              {index === 0 && (
+                                <td className="oc">
+                                  <OutreachButton status={mark?.status ?? "pending"} onChange={(next) => void setOutreach(record.canonicalEntityId, { status: next })} />
+                                </td>
+                              )}
+                            </Fragment>
+                          ))}
                           <td>
                             <span className={`st${status === "Needs review" ? " review" : status === "Verified" ? "" : " warn"}`}>{status}</span>
                           </td>
+                          <NoteCell note={mark?.note ?? ""} who={mark?.updatedBy ?? null} onSave={(note) => void setOutreach(record.canonicalEntityId, { note })} />
                         </tr>
                       );
                     })}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
+                        <td colSpan={view.columns.length + 4} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
                           Nothing matches this view.
                         </td>
                       </tr>
@@ -492,6 +542,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             {selected && (
               <RecordPanel
                 record={selected}
+                view={view}
                 conflicts={conflictsFor.get(selected.id) ?? []}
                 versionNumber={version.versionNumber}
                 resolving={resolve.isPending ? resolve.variables?.id : undefined}
@@ -511,9 +562,137 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   );
 }
 
+/** The search's name; click to rename it inline. Enter or clicking away saves, Escape cancels. */
+function EditableTitle({ jobId, name }: { jobId: string; name: string }) {
+  const client = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const save = async (value: string | null) => {
+    const next = value?.trim();
+    if (!next || next === name) return setEditing(false);
+    setSaving(true);
+    try {
+      const { job } = await api<{ job: JobDetail["job"] }>(`/api/jobs/${jobId}`, { method: "PATCH", body: JSON.stringify({ name: next }) });
+      client.setQueryData<JobDetail>(["job", jobId], (current) => (current ? { ...current, job: { ...current.job, name: job.name } } : current));
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+      setEditing(false);
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (editing) {
+    return (
+      <input
+        className="title-edit"
+        aria-label="Rename this search"
+        defaultValue={name}
+        autoFocus
+        disabled={saving}
+        maxLength={180}
+        onFocus={(focus) => focus.target.select()}
+        onBlur={(blur) => void save(blur.target.value)}
+        onKeyDown={(key) => {
+          if (key.key === "Enter") void save(key.currentTarget.value);
+          if (key.key === "Escape") setEditing(false);
+        }}
+      />
+    );
+  }
+  return (
+    <h1 className="title-view">
+      <button onClick={() => setEditing(true)} title="Rename this search">
+        {name}
+        <Pencil size={14} className="title-pencil" />
+      </button>
+    </h1>
+  );
+}
+
 function intentLabel(intent: string) {
   const words = intent.replace(/_LOOKUP$/, "").toLowerCase().replace(/_/g, " ");
   return `${/^[aeiou]/.test(words) ? "an" : "a"} ${words} lookup`;
+}
+
+type OutreachStatus = "pending" | "interested" | "declined";
+interface Outreach {
+  status: OutreachStatus;
+  note: string;
+  updatedAt?: string;
+  updatedBy?: string | null;
+}
+
+const OUTREACH: Record<OutreachStatus, { label: string; next: OutreachStatus }> = {
+  pending: { label: "Not contacted", next: "interested" },
+  interested: { label: "Confirmed interested", next: "declined" },
+  declined: { label: "Declined", next: "pending" },
+};
+
+/** Click to cycle: not contacted → interested → declined → not contacted. */
+function OutreachButton({ status, onChange }: { status: OutreachStatus; onChange: (next: OutreachStatus) => void }) {
+  const meta = OUTREACH[status] ?? OUTREACH.pending;
+  return (
+    <button
+      className={`ob ${status}`}
+      title={`${meta.label} — click to mark ${OUTREACH[meta.next].label.toLowerCase()}`}
+      aria-label={`Outreach: ${meta.label}. Click to change.`}
+      onClick={(click) => {
+        click.stopPropagation();
+        onChange(meta.next);
+      }}
+    >
+      {status === "interested" ? <Check size={13} strokeWidth={3} /> : status === "declined" ? <X size={13} strokeWidth={3} /> : <Clock size={12} />}
+    </button>
+  );
+}
+
+/** A short shared note; click to edit. Enter or clicking away saves, Escape cancels. */
+function NoteCell({ note, who, onSave }: { note: string; who: string | null; onSave: (note: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    const finish = (value: string | null) => {
+      setEditing(false);
+      if (value !== null && value.trim() !== note) onSave(value.trim());
+    };
+    return (
+      <td className="note editing" onClick={(click) => click.stopPropagation()}>
+        <input
+          autoFocus
+          defaultValue={note}
+          maxLength={280}
+          placeholder="e.g. will get back to us next week"
+          onBlur={(blur) => finish(blur.target.value)}
+          onKeyDown={(key) => {
+            if (key.key === "Enter") finish(key.currentTarget.value);
+            if (key.key === "Escape") finish(null);
+          }}
+        />
+      </td>
+    );
+  }
+  return (
+    <td
+      className={`note${note ? "" : " empty"}`}
+      title={note ? `${note}${who ? ` — ${who}` : ""}` : "Add a note"}
+      onClick={(click) => {
+        click.stopPropagation();
+        setEditing(true);
+      }}
+    >
+      {note || "Add note"}
+    </td>
+  );
+}
+
+function OutreachSummary({ records, outreach }: { records: DatasetRecord[]; outreach: Record<string, Outreach> }) {
+  const count = (status: OutreachStatus) => records.filter((record) => (outreach[record.canonicalEntityId]?.status ?? "pending") === status).length;
+  return (
+    <span className="outreach-sum">
+      Outreach: <b style={{ color: "#248a3d" }}>{count("interested")}</b> interested · <b style={{ color: "#c62828" }}>{count("declined")}</b> declined ·{" "}
+      <b>{count("pending")}</b> not contacted
+    </span>
+  );
 }
 
 function Cell({ value, className }: { value?: string; className?: string }) {
@@ -528,6 +707,7 @@ function Cell({ value, className }: { value?: string; className?: string }) {
 
 function RecordPanel(props: {
   record: DatasetRecord;
+  view: { columns: Pair[]; cards: Pair[] };
   conflicts: Conflict[];
   versionNumber: number;
   resolving?: string;
@@ -538,12 +718,13 @@ function RecordPanel(props: {
   const { record } = props;
   const pending = props.conflicts.filter((conflict) => conflict.status === "PENDING");
   const settled = props.conflicts.filter((conflict) => conflict.status !== "PENDING");
-  const subtitle = [record.fields.event_name, record.fields.sponsorship_type].filter(Boolean).join(" · ");
+  const [primary, ...rest] = props.view.columns.map(([key]) => key);
+  const subtitle = rest.map((key) => record.fields[key]).filter(Boolean).slice(0, 2).join(" · ");
   return (
     <aside className="detail">
       <div className="detail-head">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2>{record.fields.company_name ?? record.label}</h2>
+          <h2>{record.fields[primary ?? ""] ?? record.label}</h2>
           <div className="sub">{subtitle}</div>
         </div>
         <button className="btn" onClick={props.onClose} aria-label="Close">
@@ -599,7 +780,7 @@ function RecordPanel(props: {
           </div>
         ))}
 
-        {FIELD_CARDS.map(([key, label]) => {
+        {props.view.cards.map(([key, label]) => {
           const value = record.fields[key];
           if (!value) return null;
           return (
@@ -636,12 +817,12 @@ function FieldCard(props: { field: string; label: string; value: string; evidenc
       </div>
     );
   }
-  const quote = evidence && field !== "website" ? around(evidence.excerpt, value) : null;
+  const quote = evidence && !LINK_FIELDS.has(field) ? around(evidence.excerpt, value) : null;
   return (
     <div className="card">
       <div className="cap">{props.label}</div>
       <div className="val">
-        {field === "website" ? (
+        {LINK_FIELDS.has(field) ? (
           <a href={value} target="_blank" rel="noreferrer" style={{ color: "var(--link)", textDecoration: "none" }}>
             {value.replace(/^https?:\/\//, "")}
           </a>

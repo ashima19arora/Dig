@@ -2,7 +2,8 @@ import { Archive, ChevronLeft, ChevronRight, Clock, LogOut, MoreHorizontal, Sear
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEvents } from "../events";
-import { initials, useProfile } from "../profile";
+import { initials, logOut, useSession } from "../session";
+import { AskDiglett } from "./Diglett";
 
 export type SideView = "favourites" | "recent" | "archived" | "profile" | null;
 
@@ -79,7 +80,8 @@ export function AppWindow(props: {
 }
 
 function Sidebar({ active }: { active: SideView }) {
-  const events = useEvents();
+  const navigate = useNavigate();
+  const { events } = useEvents();
   const live = events.filter((event) => !event.archived);
   const items: Array<{ key: "favourites" | "recent" | "archived"; label: string; icon: ReactNode; count: number }> = [
     { key: "favourites", label: "Favourites", icon: <Star size={16} />, count: live.filter((event) => event.favourite).length },
@@ -104,76 +106,23 @@ function Sidebar({ active }: { active: SideView }) {
           <User size={16} />
           Profile
         </Link>
-        <Link to="/" className="side-item">
+        <button className="side-item" onClick={() => void logOut().finally(() => navigate("/"))}>
           <LogOut size={16} />
           Log Out
-        </Link>
+        </button>
       </div>
     </aside>
   );
 }
 
 function Avatar() {
-  const profile = useProfile();
-  const badge = initials(profile.name);
+  const { session } = useSession();
+  const name = session?.user.name ?? "";
+  const badge = initials(name);
   return (
-    <Link to="/profile" className="avatar" title={profile.name ? `${profile.name} — Profile` : "Profile"} aria-label="Open profile">
+    <Link to="/profile" className="avatar" title={name ? `${name} — Profile` : "Profile"} aria-label="Open profile">
       {badge || <User size={15} />}
     </Link>
-  );
-}
-
-/**
- * Pulsing status dot, grows slightly on hover. Chat isn't built yet, so clicking opens a small panel
- * that says so and offers the shortcuts that do work.
- */
-export function AskDiglett() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && close();
-    window.addEventListener("click", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  return (
-    <>
-      {open && (
-        <div
-          className="diglett-panel"
-          role="dialog"
-          aria-label="Diglett"
-          onClick={(click) => {
-            click.stopPropagation();
-            if ((click.target as HTMLElement).closest("a")) setOpen(false);
-          }}
-        >
-          <b>Hi, I’m Diglett.</b>
-          <p>Chatting with me is coming soon. Until then, here’s where things live:</p>
-          <Link to="/dashboard">Your events</Link>
-          <Link to="/profile">Your profile and recent searches</Link>
-          <Link to="/guide">How Dig works — The Guide</Link>
-          <p className="tip">Tip: any sponsor sheet’s Download menu can generate a sourced report explaining how it was ranked.</p>
-        </div>
-      )}
-      <button
-        className="diglett"
-        aria-label="Ask Diglett"
-        aria-expanded={open}
-        onClick={(click) => {
-          click.stopPropagation();
-          setOpen((value) => !value);
-        }}
-      >
-        <img src="/art/mole-avatar.png" alt="" />
-        <span className="dot" />
-        {!open && <span className="diglett-tip">Ask Diglett</span>}
-      </button>
-    </>
   );
 }
 
