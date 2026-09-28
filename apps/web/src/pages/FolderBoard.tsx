@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { ago, api, type JobSummary } from "../api";
 import { AppWindow, FolderIcon, type Crumb } from "../components/Shell";
-import { FOLDERS, linkJob, useEvents, type FolderKey } from "../events";
+import { FOLDERS, folderLabel, linkJob, useEvents, type FolderKey } from "../events";
 import { NewQuerySheet } from "./EventFolder";
 import { JobBoard } from "./JobBoard";
 
@@ -20,8 +20,9 @@ export function FolderBoard() {
     { label: "Job Board", to: `/events/${event.id}`, icon: folderIcon },
   ];
   const jobId = event.jobs[meta.key];
-  if (jobId) return <JobBoard jobId={jobId} crumbs={[...crumbs, { label: meta.label, icon: folderIcon }]} />;
-  return <Unlinked eventId={event.id} folder={meta.key} label={meta.label} live={meta.live} crumbs={[...crumbs, { label: meta.label, icon: folderIcon }]} />;
+  const label = folderLabel(event, meta.key);
+  if (jobId) return <JobBoard jobId={jobId} crumbs={[...crumbs, { label, icon: folderIcon }]} />;
+  return <Unlinked eventId={event.id} folder={meta.key} label={label} live={meta.live} crumbs={[...crumbs, { label, icon: folderIcon }]} />;
 }
 
 function Unlinked(props: { eventId: string; folder: FolderKey; label: string; live: boolean; crumbs: Crumb[] }) {

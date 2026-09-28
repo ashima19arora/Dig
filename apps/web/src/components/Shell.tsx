@@ -1,9 +1,10 @@
-import { Archive, ChevronLeft, ChevronRight, Clock, LogOut, Search, Star, User } from "lucide-react";
-import type { ReactNode } from "react";
+import { Archive, ChevronLeft, ChevronRight, Clock, LogOut, MoreHorizontal, Search, Star, User } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEvents } from "../events";
+import { initials, useProfile } from "../profile";
 
-export type SideView = "favourites" | "recent" | "archived" | null;
+export type SideView = "favourites" | "recent" | "archived" | "profile" | null;
 
 export interface Crumb {
   label: string;
@@ -21,6 +22,8 @@ export function AppWindow(props: {
 }) {
   const navigate = useNavigate();
   const showSidebar = props.sidebar !== false;
+  // React Router numbers in-app history entries; at 0 there is nothing in Dig to go back to.
+  const historyIndex = (window.history.state as { idx?: number } | null)?.idx ?? 0;
   return (
     <div className="desk">
       <div className="window">
@@ -31,7 +34,7 @@ export function AppWindow(props: {
             <span />
           </div>
           <div className="nav-arrows">
-            <button onClick={() => navigate(-1)} aria-label="Back">
+            <button onClick={() => navigate(-1)} aria-label="Back" disabled={historyIndex === 0}>
               <ChevronLeft size={18} />
             </button>
             <button onClick={() => navigate(1)} aria-label="Forward">
@@ -62,7 +65,7 @@ export function AppWindow(props: {
               />
             </label>
           )}
-          {showSidebar && <div className="avatar">AS</div>}
+          {showSidebar && <Avatar />}
         </div>
         <div className="window-body">
           {props.sidebar !== false && <Sidebar active={props.sidebar ?? null} />}
@@ -78,7 +81,7 @@ export function AppWindow(props: {
 function Sidebar({ active }: { active: SideView }) {
   const events = useEvents();
   const live = events.filter((event) => !event.archived);
-  const items: Array<{ key: Exclude<SideView, null>; label: string; icon: ReactNode; count: number }> = [
+  const items: Array<{ key: "favourites" | "recent" | "archived"; label: string; icon: ReactNode; count: number }> = [
     { key: "favourites", label: "Favourites", icon: <Star size={16} />, count: live.filter((event) => event.favourite).length },
     { key: "recent", label: "Recent", icon: <Clock size={16} />, count: live.length },
     { key: "archived", label: "Archived", icon: <Archive size={16} />, count: events.length - live.length },
@@ -97,10 +100,10 @@ function Sidebar({ active }: { active: SideView }) {
       </div>
       <h6>Account</h6>
       <div className="side-group">
-        <button className="side-item">
+        <Link to="/profile" className={`side-item${active === "profile" ? " active" : ""}`}>
           <User size={16} />
           Profile
-        </button>
+        </Link>
         <Link to="/" className="side-item">
           <LogOut size={16} />
           Log Out
@@ -110,14 +113,141 @@ function Sidebar({ active }: { active: SideView }) {
   );
 }
 
-/** Visual-only for now: pulsing status dot, grows slightly on hover. */
-export function AskDiglett() {
+function Avatar() {
+  const profile = useProfile();
+  const badge = initials(profile.name);
   return (
-    <button className="diglett" aria-label="Ask Diglett">
-      <img src="/art/mole-avatar.png" alt="" />
-      <span className="dot" />
-      <span className="diglett-tip">Ask Diglett</span>
-    </button>
+    <Link to="/profile" className="avatar" title={profile.name ? `${profile.name} — Profile` : "Profile"} aria-label="Open profile">
+      {badge || <User size={15} />}
+    </Link>
+  );
+}
+
+/**
+ * Pulsing status dot, grows slightly on hover. Chat isn't built yet, so clicking opens a small panel
+ * that says so and offers the shortcuts that do work.
+ */
+export function AskDiglett() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && close();
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <>
+      {open && (
+        <div
+          className="diglett-panel"
+          role="dialog"
+          aria-label="Diglett"
+          onClick={(click) => {
+            click.stopPropagation();
+            if ((click.target as HTMLElement).closest("a")) setOpen(false);
+          }}
+        >
+          <b>Hi, I’m Diglett.</b>
+          <p>Chatting with me is coming soon. Until then, here’s where things live:</p>
+          <Link to="/dashboard">Your events</Link>
+          <Link to="/profile">Your profile and recent searches</Link>
+          <Link to="/guide">How Dig works — The Guide</Link>
+          <p className="tip">Tip: any sponsor sheet’s Download menu can generate a sourced report explaining how it was ranked.</p>
+        </div>
+      )}
+      <button
+        className="diglett"
+        aria-label="Ask Diglett"
+        aria-expanded={open}
+        onClick={(click) => {
+          click.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        <img src="/art/mole-avatar.png" alt="" />
+        <span className="dot" />
+        {!open && <span className="diglett-tip">Ask Diglett</span>}
+      </button>
+    </>
+  );
+}
+
+/**
+ * A folder tile that opens `to`, with a "⋯" menu. Choosing "Rename" swaps the name for an inline field:
+ * Enter or clicking away saves, Escape cancels.
+ */
+export function FolderTile(props: {
+  to: string;
+  name: string;
+  starred?: boolean;
+  menu: Array<{ label: string; onClick: () => void }>;
+  onRename: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  if (renaming) {
+    const finish = (value: string | null) => {
+      setRenaming(false);
+      const name = value?.trim();
+      if (name && name !== props.name) props.onRename(name);
+    };
+    return (
+      <div className="folder renaming">
+        <FolderIcon starred={props.starred} />
+        <input
+          className="rename"
+          aria-label={`Rename ${props.name}`}
+          defaultValue={props.name}
+          autoFocus
+          onFocus={(focus) => focus.target.select()}
+          onBlur={(blur) => finish(blur.target.value)}
+          onKeyDown={(key) => {
+            if (key.key === "Enter") finish(key.currentTarget.value);
+            if (key.key === "Escape") finish(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  const items = [{ label: "Rename", onClick: () => setRenaming(true) }, ...props.menu];
+  return (
+    <Link to={props.to} className="folder">
+      <FolderIcon starred={props.starred} />
+      <span className="name">{props.name}</span>
+      <button
+        className={`more${open ? " open" : ""}`}
+        aria-label={`More actions for ${props.name}`}
+        onClick={(click) => {
+          click.preventDefault();
+          click.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        <MoreHorizontal size={15} />
+      </button>
+      {open && (
+        <div className="menu" onClick={(click) => click.preventDefault()}>
+          {items.map((item) => (
+            <button key={item.label} onClick={item.onClick}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </Link>
   );
 }
 

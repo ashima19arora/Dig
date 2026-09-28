@@ -1,0 +1,123 @@
+/* Dev Log and The Stack. Builds on the marketing styles in index.css (.mk-page, .why-*, .reveal). */
+
+/* The Stack's section headings (">tech_stack") need real lowercase, which Silkscreen lacks. Scoped here so
+   Why Dig's all-caps headings are unchanged. */
+.stack-card .px-heading { font-family: "Pixelify Sans", Silkscreen, monospace; font-weight: 600; letter-spacing: 0.01em; }
+.px-heading .caret { margin-left: 0.12em; }
+.log-title { font-family: "Baloo 2", Figtree, sans-serif; }
+.sprite { background-repeat: no-repeat; image-rendering: pixelated; }
+
+/* ---------- Dev Log ---------- */
+.log-hero { padding-bottom: clamp(28px, 5vh, 48px); }
+.log-title { font-size: clamp(26px, 3vw, 38px); font-weight: 800; line-height: 1.2; letter-spacing: -0.015em; max-width: 820px; margin: 16px auto 0; }
+.log { max-width: 780px; margin: 0 auto; padding: 0 16px; display: grid; gap: 22px; }
+.log-frame {
+  background: #13333f; color: #e9f4f6; padding: clamp(16px, 2.4vw, 26px) clamp(16px, 2.6vw, 30px);
+  border: 10px solid #9a5a2a; outline: 3px solid #4a250e;
+  box-shadow: inset 0 0 0 3px #0b1e26, inset 0 0 0 5px #3aa6b9, 0 14px 40px rgba(0, 0, 0, 0.5);
+  font-family: "Pixelify Sans", monospace; margin-bottom: 26px;
+}
+.log-frame h2 { color: #65e0f0; font-size: clamp(20px, 2.5vw, 30px); font-weight: 600; margin: 0 0 10px; letter-spacing: 0.02em; }
+.log-frame p { font-size: clamp(14px, 1.45vw, 18px); line-height: 1.35; margin: 0; }
+.log-entry { display: flex; gap: 12px; align-items: flex-start; }
+.log-entry.right { flex-direction: row-reverse; }
+.log-avatar { width: 48px; height: 48px; flex: none; image-rendering: pixelated; }
+.log-body { max-width: min(560px, calc(100% - 60px)); }
+.log-meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--dust); margin: 2px 0 8px; }
+.log-meta b { font-size: 13px; }
+.log-entry.left .log-meta b { color: #c792ff; }
+.log-entry.right .log-meta { flex-direction: row-reverse; }
+.log-entry.right .log-meta b { color: #5fd3ea; }
+.log-bubble {
+  margin: 0; background: #2a1e14; border: 1px solid #3a2c20; border-radius: 12px; padding: 12px 16px;
+  font-size: 14px; line-height: 1.6; color: #f1e4cf;
+}
+.log-entry.left .log-bubble { border-left: 3px solid #9a6bd6; }
+.log-entry.right .log-bubble { border-right: 3px solid #4fb9d1; }
+.log-break {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  background: #1e160f; border: 1px solid #332a21; border-radius: 14px; padding: 26px 16px 22px; margin: 12px 0;
+}
+.log-break img { height: 84px; image-rendering: pixelated; }
+.log-break b { color: var(--amber); font-size: 18px; }
+.log-break code { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: #9c8d78; }
+.term { background: #120d0a; border: 1px solid #332a21; border-radius: 12px; overflow: hidden; margin-top: 36px; }
+.term-bar { position: relative; display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: #2a1f16; border-bottom: 1px solid #332a21; }
+.term-bar i, .pipe-bar i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+.term-bar i:nth-child(2), .pipe-bar i:nth-child(2) { background: #febc2e; }
+.term-bar i:nth-child(3), .pipe-bar i:nth-child(3) { background: #28c840; }
+.term-bar span { position: absolute; left: 0; right: 0; text-align: center; font-size: 12.5px; color: #e6d8c2; pointer-events: none; }
+.term-body { padding: 18px 22px 20px; font-family: "JetBrains Mono", monospace; font-size: 13px; line-height: 1.75; color: #5fd08a; }
+.term-body p { margin: 0 0 16px; }
+.term-body p:last-child { margin: 0; }
+.term-dim { color: #9c8d78; }
+.term-cursor { display: inline-block; width: 8px; height: 14px; background: #5fd08a; vertical-align: -2px; margin-left: 4px; animation: caret 1s steps(1) infinite; }
+
+/* ---------- The Stack ---------- */
+.stack { max-width: 880px; }
+.stack-card { overflow: hidden; }
+.stack-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.stack-tag { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #5fd08a; white-space: nowrap; }
+.stack-intro { color: var(--dust); font-size: 13.5px; line-height: 1.75; margin: 14px 0 26px; max-width: 640px; }
+.bricks { position: relative; display: grid; gap: 8px; justify-items: center; padding: 14px 0 18px; }
+/* Loose brick fragments scattered around the wall, as in the design. */
+.bricks::before {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; background: #d4602e;
+  box-shadow: -360px -90px #d4602e, -372px -20px #b8481f, -384px 40px #d4602e, 362px -104px #d4602e, 350px -60px #b8481f,
+    372px 30px #d4602e, 344px 96px #b8481f, -170px 118px #d4602e, -190px 104px #b8481f, 140px 116px #d4602e, 196px 100px #d4602e;
+  pointer-events: none;
+}
+@media (max-width: 820px) { .bricks::before { display: none; } }
+.brick-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.brick {
+  width: 172px; height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  background: linear-gradient(#c04a24, #a93b1b); border: 3px solid #7c2a12; border-radius: 6px;
+  box-shadow: inset 2px 2px 0 #e0683a, inset -2px -3px 0 #86301a, 0 3px 0 #3a1408;
+  font-family: "Pixelify Sans", monospace; font-size: 15.5px; line-height: 1.1; color: #fff4e8; text-shadow: 0 1px 0 #5a1c0a;
+}
+.brick img { height: 38px; width: 42px; object-fit: contain; flex: none; }
+.pipe { background: #030d1a; border: 3px solid #1f7fe0; border-radius: 4px; font-family: "Pixelify Sans", monospace; color: #dbe9ff; }
+.pipe-bar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 2px solid #1f7fe0; }
+.pipe-bar span { margin-left: 12px; font-size: 15px; }
+.pipe-body { padding: 12px clamp(8px, 2vw, 20px) 18px; display: flex; flex-direction: column; align-items: center; }
+.pipe-title { color: #d9b8ff; border: 2px solid #9b5cf0; border-radius: 6px; padding: 3px 18px; font-size: 18px; letter-spacing: 0.06em; margin-bottom: 10px; text-align: center; }
+.pipe-node { display: flex; gap: 12px; align-items: flex-start; border: 2px solid; border-radius: 6px; padding: 8px 14px; background: #04201f; }
+.pipe-node img { width: 36px; flex: none; }
+.pipe-node b { font-weight: 600; font-size: 16px; }
+.pipe-node ul { margin: 2px 0 0; padding: 0; list-style: none; font-size: 13.5px; line-height: 1.5; }
+.pipe-node li::before { content: "\25CF  "; color: #3be08e; font-size: 9px; vertical-align: 1px; }
+.pipe-node.green { border-color: #2bd490; }
+.pipe-node.violet { border-color: #9b5cf0; background: #1b0f3a; }
+.pipe-query { align-self: flex-start; margin-left: 4%; min-width: 46%; }
+.pipe-result { align-items: center; }
+.pipe-result img { width: 26px; }
+.pipe-arrow { width: 2px; height: 16px; background: #3a9cf0; position: relative; margin-bottom: 6px; }
+.pipe-arrow::after { content: ""; position: absolute; left: -5px; bottom: -6px; border: 6px solid transparent; border-top-color: #3a9cf0; border-bottom: 0; }
+.pipe-group { align-self: stretch; border: 2px dashed #1f7fe0; border-radius: 6px; padding: 8px 12px; }
+.pipe-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.pipe-label img { width: 22px; }
+.pipe-fork { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px clamp(20px, 12%, 130px); padding: 4px 0 6px; }
+.pipe-tag { border: 2px solid; border-radius: 6px; padding: 5px 22px; font-size: 14px; letter-spacing: 0.04em; }
+.pipe-tag.blue { border-color: #2b7ff0; background: #0a2a6e; }
+.pipe-tag.pink { border-color: #e0508a; background: #4a0f2e; }
+.pipe-stages { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; row-gap: 8px; }
+.pipe-step { display: flex; align-items: center; }
+.pipe-next { width: 12px; height: 2px; background: #3a9cf0; margin: 0 8px 0 3px; position: relative; }
+.pipe-next::after { content: ""; position: absolute; right: -6px; top: -5px; border: 6px solid transparent; border-left-color: #3a9cf0; border-right: 0; }
+.pipe-stage { display: flex; align-items: center; gap: 8px; border: 2px solid; border-radius: 6px; padding: 8px 12px; font-size: 13.5px; letter-spacing: 0.03em; }
+.pipe-stage img { width: 26px; height: 26px; object-fit: contain; }
+.pipe-stage.blue { border-color: #2b7ff0; background: #0a2a6e; }
+.pipe-stage.violet { border-color: #9b5cf0; background: #2a1360; }
+.pipe-stage.orange { border-color: #f08a2b; background: #6a2e08; }
+.pipe-stage.green { border-color: #2bd490; background: #0a4a2a; }
+.pipe-stage.indigo { border-color: #6f7cf0; background: #161d6a; }
+.tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.tool { position: relative; display: flex; align-items: center; gap: 12px; padding: 26px 14px 20px; border: 2px solid #c8583a; }
+.tool::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: #c8583a; }
+.tool img { width: 54px; height: 54px; object-fit: contain; flex: none; }
+.tool b { display: block; font-family: "Pixelify Sans", monospace; font-weight: 500; font-size: 22px; color: var(--cream); }
+.tool span { display: block; font-family: "Pixelify Sans", monospace; font-size: 14.5px; color: #9c8d78; line-height: 1.25; }
+@media (max-width: 720px) {
+  .pipe-query { margin-left: 0; min-width: 0; align-self: stretch; }
+  .brick { width: 138px; }
+}

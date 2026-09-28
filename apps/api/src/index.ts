@@ -15,6 +15,7 @@ import {
 import {
   createJobSchema,
   duplicateJobSchema,
+  INTENT_LABELS,
   previewBlueprintSchema,
   resolveConflictSchema,
   savedViewSchema,
@@ -22,10 +23,28 @@ import {
   updateBlueprintSchema,
 } from "@dig/schemas";
 import { labelOf, DigDb } from "./db.js";
+import { renderSponsorReport } from "./report.js";
 import { env } from "./env.js";
 import { computeNextRun, executeJob, isRunning, requestCancel, subscribe } from "./runner.js";
 
 const db = new DigDb();
+
+/*
+  Only sponsor research is supported end to end this pass. Other intents still resolve (so seeded demo
+  jobs keep rendering), but creating, running or reporting on them is refused with a clear message.
+*/
+const SUPPORTED_INTENTS = new Set(["SPONSOR_LOOKUP"]);
+
+function unsupported(res: Response, req: Request, intent: string) {
+  const label = INTENT_LABELS[intent as keyof typeof INTENT_LABELS] ?? intent;
+  return fail(
+    res,
+    req,
+    422,
+    "UNSUPPORTED_INTENT",
+    `${label} isn’t supported yet — Dig can only research sponsors right now. Try asking for sponsors, e.g. “find sponsors for hackathons in India”.`,
+  );
+}
 const hits = new Map<string, { count: number; reset: number }>();
 
 const DEMO_JOBS: Array<{ query: string; showcase: boolean }> = [
@@ -158,6 +177,7 @@ async function main() {
     const sources = new Set(sample.flatMap((record) => record.sources.map((source) => source.url))).size;
     ok(res, req, {
       blueprint: built.blueprint,
+      supported: SUPPORTED_INTENTS.has(built.blueprint.intent),
       match: built.match,
       name: suggestJobName(built.blueprint),
       plan: collectionPlan(built.blueprint, { records: Math.min(sample.length, env.maxRecords), sources }, env.llmEnabled),
@@ -172,6 +192,7 @@ async function main() {
   app.post("/api/jobs", (req, res) => {
     const body = createJobSchema.parse(req.body);
     const built = body.blueprint ? { blueprint: body.blueprint } : buildBlueprint(body.query);
+    if (!SUPPORTED_INTENTS.has(built.blueprint.intent)) return unsupported(res, req, built.blueprint.intent);
     const job = db.createJob({
       workspaceId: workspace.id,
       name: body.name ?? suggestJobName(built.blueprint),
@@ -194,6 +215,7 @@ async function main() {
     const job = db.job(req.params.id);
     if (!job) return fail(res, req, 404, "NOT_FOUND", "Collection job not found.");
     const body = updateBlueprintSchema.parse(req.body);
+    if (!SUPPORTED_INTENTS.has(body.blueprint.intent)) return unsupported(res, req, body.blueprint.intent);
     db.updateBlueprint(job.id, body.blueprint, body.name ?? suggestJobName(body.blueprint), user.id);
     ok(res, req, { job: db.job(job.id) });
   });
@@ -210,6 +232,7 @@ async function main() {
   app.post("/api/jobs/:id/duplicate", (req, res) => {
     const job = db.job(req.params.id);
     if (!job) return fail(res, req, 404, "NOT_FOUND", "Collection job not found.");
+    if (!SUPPORTED_INTENTS.has(job.blueprint.intent)) return unsupported(res, req, job.blueprint.intent);
     const body = duplicateJobSchema.parse(req.body ?? {});
     const blueprint = body.location ? withLocation(job.blueprint, body.location) : job.blueprint;
     const copy = db.createJob({
@@ -233,6 +256,7 @@ async function main() {
   app.post("/api/jobs/:id/run", (req, res) => {
     const job = db.job(req.params.id);
     if (!job) return fail(res, req, 404, "NOT_FOUND", "Collection job not found.");
+    if (!SUPPORTED_INTENTS.has(job.blueprint.intent)) return unsupported(res, req, job.blueprint.intent);
     if (isRunning(job.id) || db.active(job.id)) return fail(res, req, 409, "ALREADY_RUNNING", "This collection is already running.");
     void executeJob(db, job.id, user.id);
     ok(res, req, { started: true, progress: db.progress(job.id) });
@@ -334,6 +358,25 @@ async function main() {
     if (format === "json") {
       res.setHeader("Content-Disposition", `attachment; filename="${filename}.json"`);
       res.json({ job: job.name, version: version.version_number, demo: job.demo, records });
+      return;
+    }
+    if (format === "report") {
+      if (!SUPPORTED_INTENTS.has(job.blueprint.intent)) return unsupported(res, req, job.blueprint.intent);
+      const conflicts = db.conflicts(job.id).filter((conflict) => conflict.runId === version.run_id);
+      const markdown = renderSponsorReport({
+        job,
+        version: {
+          versionNumber: version.version_number,
+          createdAt: version.created_at,
+          qualityScore: version.quality_score,
+          avgConfidence: version.avg_confidence,
+        },
+        records,
+        conflicts,
+      });
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}-report.md"`);
+      res.send(markdown);
       return;
     }
     if (format === "html") {

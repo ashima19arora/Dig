@@ -26,6 +26,8 @@ export interface DigEvent {
   openedAt: string;
   /** folder → the job whose dataset that folder shows */
   jobs: Partial<Record<FolderKey, string>>;
+  /** folder → the name the user gave it, when renamed */
+  folderNames?: Partial<Record<FolderKey, string>>;
 }
 
 export const ORG_NAME = "Geek Room";
@@ -106,6 +108,15 @@ export function createEvent(input: Pick<DigEvent, "name" | "description" | "date
   const event: DigEvent = { ...input, id, favourite: false, archived: false, openedAt: new Date().toISOString(), jobs: {} };
   save([event, ...load()]);
   return event;
+}
+
+export function folderLabel(event: DigEvent, key: FolderKey): string {
+  return event.folderNames?.[key] || (FOLDERS.find((folder) => folder.key === key)?.label ?? key);
+}
+
+export function renameFolder(id: string, key: FolderKey, name: string) {
+  const event = load().find((item) => item.id === id);
+  if (event) updateEvent(id, { folderNames: { ...event.folderNames, [key]: name } });
 }
 
 export function touchEvent(id: string) {

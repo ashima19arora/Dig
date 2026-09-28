@@ -1,11 +1,19 @@
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { saveProfile } from "../profile";
 
-/** UI only — there is deliberately no real authentication. Submitting just opens the Dashboard. */
+/**
+ * UI only — there is deliberately no real authentication. Submitting remembers the name/email locally
+ * (so the Profile page shows them) and opens the Dashboard. Nothing is sent anywhere.
+ */
 export function Auth({ mode }: { mode: "login" | "signup" }) {
   const navigate = useNavigate();
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const form = new FormData(event.currentTarget as HTMLFormElement);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    saveProfile({ ...(name ? { name } : {}), ...(email ? { email } : {}) });
     navigate("/dashboard");
   };
   const signup = mode === "signup";
@@ -31,11 +39,11 @@ export function Auth({ mode }: { mode: "login" | "signup" }) {
         {signup && (
           <>
             <label htmlFor="name">Name</label>
-            <input id="name" autoComplete="name" placeholder="Arnav Sawhney" />
+            <input id="name" name="name" autoComplete="name" placeholder="Ashima Arora" />
           </>
         )}
         <label htmlFor="email">Email</label>
-        <input id="email" type="email" autoComplete="email" placeholder="you@geekroom.in" />
+        <input id="email" name="email" type="email" autoComplete="email" placeholder="you@geekroom.in" />
         <label htmlFor="password">Password</label>
         <input id="password" type="password" autoComplete={signup ? "new-password" : "current-password"} placeholder="••••••••" />
         <button type="submit" className="px-btn" style={{ width: "100%", justifyContent: "center", marginTop: 22 }}>

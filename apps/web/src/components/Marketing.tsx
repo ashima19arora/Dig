@@ -1,6 +1,6 @@
 import { Heart } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 
 export const GITHUB_URL = "https://github.com/ashima19arora/Dig";
 const TEAM = [
@@ -25,17 +25,45 @@ function LinkedInMark() {
   );
 }
 
+/** Where the cosmetic auth screens live. Shared by the hero CTAs and the navbar so both behave the same. */
+const AUTH_PATHS = { login: "/login", signup: "/signup" } as const;
+
+export function AuthButton({ mode, className, children }: { mode: keyof typeof AUTH_PATHS; className: string; children: ReactNode }) {
+  const navigate = useNavigate();
+  return (
+    <button className={className} onClick={() => navigate(AUTH_PATHS[mode])}>
+      {children}
+    </button>
+  );
+}
+
+const TABS: Array<[string, string]> = [
+  ["/", "Home"],
+  ["/why", "Why Dig"],
+  ["/dev-log", "Dev Log"],
+  ["/stack", "The Stack"],
+  ["/guide", "Guide"],
+];
+
 export function MarketingNav() {
   const tab = ({ isActive }: { isActive: boolean }) => `mk-link pixel${isActive ? " active" : ""}`;
   return (
     <header className="landing-nav">
-      <Link to="/">
+      <Link to="/" className="mk-logo">
         <img src="/art/logo.png" alt="Dig" />
       </Link>
       <nav className="mk-nav">
-        <NavLink to="/why" className={tab}>Why Dig</NavLink>
-        <NavLink to="/dev-log" className={tab}>Dev Log</NavLink>
-        <NavLink to="/stack" className={tab}>The Stack</NavLink>
+        {TABS.map(([to, label]) => (
+          <NavLink key={to} to={to} end className={tab}>
+            {label}
+          </NavLink>
+        ))}
+        <AuthButton mode="login" className="mk-link mk-auth pixel">
+          Log in
+        </AuthButton>
+        <AuthButton mode="signup" className="px-btn mk-signup">
+          Sign Up
+        </AuthButton>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="mk-github pixel">
           <GithubMark /> GitHub
         </a>
@@ -135,11 +163,13 @@ export function Reveal({ children, className }: { children: ReactNode; className
   );
 }
 
-export function PixelHeading({ children, as: Tag = "h2", className }: { children: string; as?: "h2" | "div"; className?: string }) {
+export function PixelHeading(props: { children: string; as?: "h2" | "div"; className?: string; caret?: boolean }) {
+  const { children, as: Tag = "h2", className } = props;
   return (
     <Tag className={`px-heading pixel${className ? ` ${className}` : ""}`}>
       <span className="gt">&gt;</span>
       {children}
+      {props.caret && <span className="caret blink" />}
     </Tag>
   );
 }

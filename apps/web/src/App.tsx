@@ -6,6 +6,9 @@ import { Dashboard } from "./pages/Dashboard";
 import { EventFolder } from "./pages/EventFolder";
 import { FolderBoard } from "./pages/FolderBoard";
 import { JobBoard } from "./pages/JobBoard";
+import { DevLog } from "./pages/DevLog";
+import { Profile } from "./pages/Profile";
+import { Stack } from "./pages/Stack";
 import { Landing } from "./pages/Landing";
 import { WhyDig } from "./pages/WhyDig";
 
@@ -19,17 +22,16 @@ export function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/why" element={<WhyDig />} />
+      <Route path="/dev-log" element={<DevLog />} />
+      <Route path="/stack" element={<Stack />} />
       <Route
-        path="/dev-log"
-        element={<ComingSoon kicker="DEV_LOG" blurb="Notes from building Dig — what we tried, what broke, and what we shipped. The first entries are on their way." />}
-      />
-      <Route
-        path="/stack"
-        element={<ComingSoon kicker="THE_STACK" blurb="A look at the tools and pieces that power Dig, from collection to the final sourced sheet. Details are on their way." />}
+        path="/guide"
+        element={<ComingSoon kicker="GUIDE" blurb="A walkthrough of how to use Dig — asking a question, reading the results, and resolving conflicts. It’s on its way." />}
       />
       <Route path="/login" element={<Auth mode="login" />} />
       <Route path="/signup" element={<Auth mode="signup" />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/profile" element={<Profile />} />
       <Route path="/events/:eventId" element={<EventFolder />} />
       <Route path="/events/:eventId/:folder" element={<FolderBoard />} />
       <Route path="/jobs/:jobId" element={<StandaloneJobBoard />} />

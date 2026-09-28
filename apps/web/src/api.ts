@@ -46,6 +46,15 @@ export interface Progress {
   conflicts: number;
 }
 
+/** Only sponsor research runs end to end this pass; the API refuses other intents with UNSUPPORTED_INTENT. */
+export const SUPPORTED_INTENTS = ["SPONSOR_LOOKUP"];
+
+export class ApiError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -54,9 +63,25 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const body = (await response.json()) as { success: boolean; data: T; error?: { message: string } };
-  if (!response.ok || body.success === false) throw new Error(body.error?.message ?? "Request failed");
+  const body = (await response.json()) as { success: boolean; data: T; error?: { message: string; code?: string } };
+  if (!response.ok || body.success === false) throw new ApiError(body.error?.message ?? "Request failed", body.error?.code ?? "ERROR");
   return body.data;
+}
+
+/** Downloads a file from the API, surfacing the API's error message instead of saving an error page. */
+export async function download(path: string, fallbackName: string) {
+  const response = await fetch(path);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: { message: string; code?: string } } | null;
+    throw new ApiError(body?.error?.message ?? `Download failed (${response.status})`, body?.error?.code ?? "ERROR");
+  }
+  const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await response.blob());
+  const link = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function ago(iso: string | null | undefined) {

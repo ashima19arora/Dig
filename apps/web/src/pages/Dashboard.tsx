@@ -1,7 +1,6 @@
-import { MoreHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AppWindow, FolderIcon, NewFolderIcon, type SideView } from "../components/Shell";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { AppWindow, FolderTile, NewFolderIcon } from "../components/Shell";
 import { createEvent, ORG_NAME, updateEvent, useEvents, type DigEvent } from "../events";
 import { EventSheet } from "./EventSheet";
 
@@ -9,7 +8,7 @@ const TITLES = { favourites: "Favourites", recent: "Recent", archived: "Archived
 
 export function Dashboard() {
   const [params] = useSearchParams();
-  const view = (["favourites", "recent", "archived"].includes(params.get("view") ?? "") ? params.get("view") : "recent") as Exclude<SideView, null>;
+  const view = (["favourites", "recent", "archived"].includes(params.get("view") ?? "") ? params.get("view") : "recent") as keyof typeof TITLES;
   const events = useEvents();
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -58,39 +57,19 @@ export function Dashboard() {
 }
 
 function EventTile({ event }: { event: DigEvent }) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [open]);
-
   return (
-    <Link to={`/events/${event.id}`} className="folder">
-      <FolderIcon starred={event.favourite} />
-      <span className="name">{event.name}</span>
-      <button
-        className={`more${open ? " open" : ""}`}
-        aria-label={`More actions for ${event.name}`}
-        onClick={(click) => {
-          click.preventDefault();
-          click.stopPropagation();
-          setOpen((value) => !value);
-        }}
-      >
-        <MoreHorizontal size={15} />
-      </button>
-      {open && (
-        <div className="menu" onClick={(click) => click.preventDefault()}>
-          <button onClick={() => updateEvent(event.id, { favourite: !event.favourite })}>
-            {event.favourite ? "Remove from Favourites" : "Add to Favourites"}
-          </button>
-          <button onClick={() => updateEvent(event.id, { archived: !event.archived })}>
-            {event.archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
-      )}
-    </Link>
+    <FolderTile
+      to={`/events/${event.id}`}
+      name={event.name}
+      starred={event.favourite}
+      onRename={(name) => updateEvent(event.id, { name })}
+      menu={[
+        {
+          label: event.favourite ? "Remove from Favourites" : "Add to Favourites",
+          onClick: () => updateEvent(event.id, { favourite: !event.favourite }),
+        },
+        { label: event.archived ? "Unarchive" : "Archive", onClick: () => updateEvent(event.id, { archived: !event.archived }) },
+      ]}
+    />
   );
 }

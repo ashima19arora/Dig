@@ -1,7 +1,6 @@
 import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { MarketingFooter, MarketingNav, TypedLines } from "../components/Marketing";
+import { AuthButton, MarketingFooter, MarketingNav, TypedLines } from "../components/Marketing";
 
 /*
   Offsets are in source-art pixels (the 4320×3000 illustration), snapped to the
@@ -110,14 +109,11 @@ const FEATURES: Array<{ icon: string; title: string; body: string }> = [
 ];
 
 export function Landing() {
-  const navigate = useNavigate();
   return (
     <div className="landing">
       <MarketingNav />
 
       <section className="hero">
-        <div className="lantern-glow" />
-        <MoleEyes />
         <div className="hero-copy">
           <TypedLines
             className="hero-title"
@@ -132,16 +128,20 @@ export function Landing() {
             running the event instead of manually hunting for contacts.
           </p>
         </div>
+        <div className="hero-art">
+          <div className="lantern-glow" />
+          <MoleEyes />
+        </div>
         <div className="hero-ctas">
           <button className="px-btn lg" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}>
             <Play size={12} fill="currentColor" style={{ display: "inline" }} /> Watch 60-second demo
           </button>
-          <button className="px-btn lg" onClick={() => navigate("/signup")}>
+          <AuthButton mode="signup" className="px-btn lg">
             Sign up free
-          </button>
-          <button className="px-btn lg" onClick={() => navigate("/login")}>
+          </AuthButton>
+          <AuthButton mode="login" className="px-btn lg">
             Log in
-          </button>
+          </AuthButton>
         </div>
       </section>
 

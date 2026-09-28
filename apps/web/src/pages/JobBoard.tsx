@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, Download, Filter, Play, RotateCw, Search, Upload, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, FileText, Filter, Play, RotateCw, Search, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   ACTIVE_STATES,
   api,
+  download,
+  SUPPORTED_INTENTS,
   type Conflict,
   type Dataset,
   type DatasetRecord,
@@ -60,6 +63,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [report, setReport] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const [runStartedAt, setRunStartedAt] = useState(() => Date.now());
   const [, setTick] = useState(0);
 
@@ -127,6 +131,16 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
       if (!/already running/i.test(String(error))) setLive(null);
     },
   });
+
+  const generateReport = async () => {
+    setReport({ busy: true, error: null });
+    try {
+      await download(`/api/jobs/${jobId}/export?format=report`, "dig-report.md");
+      setReport({ busy: false, error: null });
+    } catch (error) {
+      setReport({ busy: false, error: error instanceof Error ? error.message : "The report couldn’t be generated." });
+    }
+  };
 
   const resolve = useMutation({
     mutationFn: (input: { id: string; decision: "NEW" | "OLD" }) =>
@@ -220,6 +234,26 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
     );
   }
 
+  if (job && !SUPPORTED_INTENTS.includes(job.blueprint.intent)) {
+    return (
+      <AppWindow crumbs={crumbs} sidebar={false}>
+        <div className="empty">
+          <div className="unsupported">
+            <h3>{job.name} isn’t supported yet</h3>
+            <p>
+              This search asks for {intentLabel(job.blueprint.intent)}, and Dig can only research <b>sponsors</b> right now — so it
+              won’t run, and there’s no live data to show. Support for more kinds of searches is on the way.
+            </p>
+            <p className="q">Query — “{job.query}”</p>
+            <Link to="/dashboard" className="btn blue">
+              Back to your events
+            </Link>
+          </div>
+        </div>
+      </AppWindow>
+    );
+  }
+
   return (
     <AppWindow
       crumbs={crumbs}
@@ -260,6 +294,16 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 <a href={exportHref("json")} download>
                   <button>JSON (.json)</button>
                 </a>
+                <div className="menu-sep" />
+                <button onClick={() => void generateReport()} disabled={report.busy}>
+                  <FileText size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 6 }} />
+                  Generate report (.md)
+                </button>
+              </div>
+            )}
+            {(report.busy || report.error) && (
+              <div className={`report-note${report.error ? " err" : ""}`} role="status">
+                {report.busy ? "Generating report…" : report.error}
               </div>
             )}
             <button className="btn" disabled={running || runAgain.isPending} onClick={() => runAgain.mutate()}>
@@ -317,6 +361,12 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
               )}
               <a onClick={() => setPanel({ kind: "diff" })}>Full diff ›</a>
             </span>
+          </div>
+        )}
+
+        {runAgain.isError && !/already running/i.test(String(runAgain.error)) && (
+          <div className="progress">
+            <span className="err">Couldn’t start a new run: {runAgain.error.message}</span>
           </div>
         )}
 
@@ -446,6 +496,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 versionNumber={version.versionNumber}
                 resolving={resolve.isPending ? resolve.variables?.id : undefined}
                 onResolve={(id, decision) => resolve.mutate({ id, decision })}
+                resolveError={resolve.isError ? resolve.error.message : null}
                 onClose={() => setPanel(null)}
               />
             )}
@@ -458,6 +509,11 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
       </div>
     </AppWindow>
   );
+}
+
+function intentLabel(intent: string) {
+  const words = intent.replace(/_LOOKUP$/, "").toLowerCase().replace(/_/g, " ");
+  return `${/^[aeiou]/.test(words) ? "an" : "a"} ${words} lookup`;
 }
 
 function Cell({ value, className }: { value?: string; className?: string }) {
@@ -476,6 +532,7 @@ function RecordPanel(props: {
   versionNumber: number;
   resolving?: string;
   onResolve: (id: string, decision: "NEW" | "OLD") => void;
+  resolveError: string | null;
   onClose: () => void;
 }) {
   const { record } = props;
@@ -527,6 +584,7 @@ function RecordPanel(props: {
                 Keep previous
               </button>
             </div>
+            {props.resolveError && <p className="err" style={{ margin: "10px 0 0" }}>Couldn’t save that decision: {props.resolveError}</p>}
           </div>
         ))}
 
