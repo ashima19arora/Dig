@@ -137,27 +137,36 @@ Download the results as CSV, Excel, or JSON to hand off to your team — or gene
 
 ## Getting started
 
-**Try it live:** `<deployed site link — coming soon>`
+**Try it live:** [dig-ai.vercel.app](https://dig-ai.vercel.app/) — sign up, create an event, and ask your first question.
 
 **Or run it locally:**
 
-Requirements: Node.js ≥ 22
+Requirements: Node.js 22.13+ (24 recommended — see `.nvmrc`)
 
 ```bash
 git clone https://github.com/ashima19arora/Dig.git
-cd dig
+cd Dig
 npm install
 
 cp .env.example .env
-# add TAVILY_API_KEY and LLM_PROVIDER + LLM_API_KEY (openai or groq)
+# Required in .env:
+#   TAVILY_API_KEY=...        (web search — tavily.com)
+#   LLM_PROVIDER=groq
+#   LLM_API_KEY=...           (console.groq.com)
+#   LLM_MODEL=openai/gpt-oss-120b
+# Everything else has working defaults.
 
-npm run db:migrate
 npm run dev
 ```
 
-Your account, events and results are stored in `data/dig.db` and survive restarts.
+Open [localhost:5173](http://localhost:5173), sign up, and start digging. Your account, events and results are stored in `data/dig.db` and survive restarts.
 
 This starts the API and web app together — the web app on Vite's dev server, the API on Express with `tsx watch`.
+
+### Deploying
+
+- **API → [Railway](https://railway.app)** (a normal always-on Node server, so live searches can run in the background). Build from the repo root with start command `npm run db:migrate && npm start -w @dig/api`, attach a volume at `/data`, and set `DATABASE_PATH=/data/dig.db` plus the keys above.
+- **Web → [Vercel](https://vercel.com)** from the repo root — build settings live in `vercel.json`, which also forwards `/api/*` to the Railway API, so the site and API share one domain and need no extra environment variables.
 
 
 ## Vision
@@ -176,7 +185,7 @@ Same pipeline, same grounding, same trust — just pointed at whatever you're di
 
 ## The team
 
-Built by **Mayank** and **Ashima**, four days, one monorepo, and more coffee breaks than either of us will admit to. The full build, failure by failure, is in the [Dev Log](https://github.com/ashima19arora/Dig).
+Built by **Mayank** and **Ashima**, four days, one monorepo, and more coffee breaks than either of us will admit to. The full build, failure by failure, is in the [Dev Log](https://dig-ai.vercel.app/dev-log).
 
 <div align="center">
 
