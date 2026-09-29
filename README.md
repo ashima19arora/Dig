@@ -13,6 +13,8 @@
 
 Sponsors, judges, speakers — found, sourced, and organized into one space, so your whole team can focus on running the event instead of manually hunting for contacts.
 
+**[▶ Watch the demo](https://youtu.be/wxyIEdSFLwU)** · **[Try it live](https://dig-ai.vercel.app/)**
+
 </div>
 
 ## Table of contents
@@ -138,6 +140,8 @@ Download the results as CSV, Excel, or JSON to hand off to your team — or gene
 ## Getting started
 
 **Try it live:** [dig-ai.vercel.app](https://dig-ai.vercel.app/) — sign up, create an event, and ask your first question.
+
+**Watch the demo:** [youtu.be/wxyIEdSFLwU](https://youtu.be/wxyIEdSFLwU)
 
 **Or run it locally:**
 

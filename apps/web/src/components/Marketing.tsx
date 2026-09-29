@@ -4,6 +4,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 
 export const GITHUB_URL = "https://github.com/ashima19arora/Dig";
 export const GUIDE_URL = "https://github.com/ashima19arora/Dig#readme";
+export const DEMO_URL = "https://youtu.be/wxyIEdSFLwU";
 const TEAM = [
   { name: "Mayank", url: "https://www.linkedin.com/in/mayankgarg18/" },
   { name: "Ashima", url: "https://www.linkedin.com/in/ashima-arora-0396ab336/" },

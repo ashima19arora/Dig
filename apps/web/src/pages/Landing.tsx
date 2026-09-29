@@ -1,6 +1,6 @@
 import { Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { AuthButton, MarketingFooter, MarketingNav, TypedLines } from "../components/Marketing";
+import { AuthButton, DEMO_URL, MarketingFooter, MarketingNav, TypedLines } from "../components/Marketing";
 
 /*
   Offsets are in source-art pixels (the 4320×3000 illustration), snapped to the
@@ -133,9 +133,9 @@ export function Landing() {
           <MoleEyes />
         </div>
         <div className="hero-ctas">
-          <button className="px-btn lg" onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}>
-            <Play size={12} fill="currentColor" style={{ display: "inline" }} /> Watch 60-second demo
-          </button>
+          <a className="px-btn lg" href={DEMO_URL} target="_blank" rel="noreferrer">
+            <Play size={12} fill="currentColor" style={{ display: "inline" }} /> Watch the demo
+          </a>
           <AuthButton mode="signup" className="px-btn lg">
             Sign up free
           </AuthButton>

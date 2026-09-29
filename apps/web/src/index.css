@@ -57,6 +57,7 @@ button { cursor: pointer; }
 
 /* Pixel buttons: lighten on hover, press down a couple of pixels on click. */
 .px-btn {
+  text-decoration: none;
   font-family: Silkscreen, monospace;
   text-transform: uppercase;
   letter-spacing: 0.06em;
