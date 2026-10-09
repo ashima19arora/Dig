@@ -8,6 +8,11 @@ import { Toasts } from "./toast";
 import "./index.css";
 import "./story.css";
 
+const savedAppearance = localStorage.getItem("dig-appearance");
+document.documentElement.dataset.theme = savedAppearance === "dark" || savedAppearance === "light"
+  ? savedAppearance
+  : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import * as XLSX from "xlsx";
 import { ZodError } from "zod";
 import { buildBlueprint, renderCsv, suggestJobName } from "@dig/core";
+import { mountAgents } from "./agents-http.js";
 import {
   createJobSchema,
   eventInputSchema,
@@ -370,7 +371,7 @@ async function main() {
       const mark = outreach[record.canonicalEntityId];
       return mark ? { ...record, fields: { ...record.fields, outreach_status: mark.status, outreach_note: mark.note } } : record;
     });
-    const exportFields = [...job.blueprint.fields, "outreach_status", "outreach_note"];
+    const exportFields = [...new Set([...job.blueprint.fields, "email", "phone", "linkedin", "github", "website", "contact_page", "outreach_status", "outreach_note"])];
     db.recordExport(job.id, version.id, format, authOf(req).user.id);
     const filename = `${job.name.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "dig"}-v${version.version_number}`;
     if (format === "report") {
@@ -420,6 +421,200 @@ async function main() {
     res.send(renderCsv(records, exportFields));
   });
 
+  app.get("/api/agents/merge/export", (req, res) => {
+    const auth = authOf(req);
+    const jobIdsParam = String(req.query.jobs ?? "");
+    const jobIds = jobIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    if (jobIds.length === 0) {
+      return fail(res, req, 400, "BAD_REQUEST", "Please provide at least one job ID to merge.");
+    }
+    const format = String(req.query.format ?? "xlsx");
+    const dedupe = req.query.dedupe !== "false";
+
+    type RecordWithSearch = ReturnType<typeof db.recordsForVersion>[0] & { searchName: string; searchIntent: string };
+    const allRecords: RecordWithSearch[] = [];
+    const searchNames: string[] = [];
+
+    for (const jobId of jobIds) {
+      const job = db.job(jobId);
+      if (!job || job.workspaceId !== auth.workspace.id) continue;
+      const version = db.latestVersion(job.id);
+      if (!version) continue;
+      searchNames.push(job.name);
+      const outreach = db.outreach(db.outreachScope(job.id, job.blueprint.intent, auth.user.id));
+      const records = db.recordsForVersion(version.id);
+      for (const rec of records) {
+        const mark = outreach[rec.canonicalEntityId];
+        const fields = { ...rec.fields };
+        if (mark) {
+          fields.outreach_status = mark.status;
+          fields.outreach_note = mark.note;
+        }
+        allRecords.push({
+          ...rec,
+          fields,
+          searchName: job.name,
+          searchIntent: job.blueprint.intent,
+        });
+      }
+    }
+
+    if (allRecords.length === 0) {
+      return fail(res, req, 404, "NO_DATA", "The selected searches have no records to merge.");
+    }
+
+    interface OutputItem {
+      rank: number;
+      name: string;
+      category: string;
+      contact: string;
+      email: string;
+      phone: string;
+      website: string;
+      confidence: number;
+      status: string;
+      searches: string;
+      sources: string;
+      outreach_status: string;
+      outreach_note: string;
+    }
+
+    let outputRecords: OutputItem[] = [];
+
+    if (dedupe) {
+      const entityMap = new Map<string, {
+        record: typeof allRecords[0];
+        searches: Set<string>;
+        sources: Set<string>;
+        maxConfidence: number;
+      }>();
+
+      for (const rec of allRecords) {
+        const primary = rec.fields.company_name || rec.fields.person_name || rec.fields.role_title || rec.canonicalEntityId || "";
+        const normKey = (rec.canonicalEntityId || primary.toLowerCase().replace(/[^a-z0-9]/g, "")) || "unknown";
+
+        const existing = entityMap.get(normKey);
+        if (existing) {
+          existing.searches.add(rec.searchName);
+          for (const s of rec.sources) existing.sources.add(s.url);
+          existing.maxConfidence = Math.max(existing.maxConfidence, rec.confidence ?? 0.8);
+          for (const [k, v] of Object.entries(rec.fields)) {
+            if (!existing.record.fields[k] && v) {
+              existing.record.fields[k] = v;
+            }
+          }
+        } else {
+          entityMap.set(normKey, {
+            record: { ...rec, fields: { ...rec.fields } },
+            searches: new Set([rec.searchName]),
+            sources: new Set(rec.sources.map((s) => s.url)),
+            maxConfidence: rec.confidence ?? 0.8,
+          });
+        }
+      }
+
+      let rank = 1;
+      const sorted = Array.from(entityMap.values()).sort((a, b) => b.maxConfidence - a.maxConfidence);
+      for (const item of sorted) {
+        const f = item.record.fields;
+        outputRecords.push({
+          rank: rank++,
+          name: f.company_name || f.person_name || f.role_title || item.record.canonicalEntityId || "Unknown",
+          category: f.category || f.sponsorship_type || f.expertise || f.location || "",
+          contact: f.contact || f.person_name || "",
+          email: f.email || "",
+          phone: f.phone || "",
+          website: f.website || f.profile_url || "",
+          confidence: Math.round(item.maxConfidence * 100) / 100,
+          status: item.record.status,
+          searches: Array.from(item.searches).join(", "),
+          sources: Array.from(item.sources).join(" "),
+          outreach_status: f.outreach_status || "pending",
+          outreach_note: f.outreach_note || "",
+        });
+      }
+    } else {
+      let rank = 1;
+      for (const rec of allRecords) {
+        const f = rec.fields;
+        outputRecords.push({
+          rank: rank++,
+          name: f.company_name || f.person_name || f.role_title || rec.canonicalEntityId || "Unknown",
+          category: f.category || f.sponsorship_type || f.expertise || f.location || "",
+          contact: f.contact || f.person_name || "",
+          email: f.email || "",
+          phone: f.phone || "",
+          website: f.website || f.profile_url || "",
+          confidence: Math.round((rec.confidence ?? 0.8) * 100) / 100,
+          status: rec.status,
+          searches: rec.searchName,
+          sources: rec.sources.map((s) => s.url).join(" "),
+          outreach_status: f.outreach_status || "pending",
+          outreach_note: f.outreach_note || "",
+        });
+      }
+    }
+
+    const filename = `dig-merged-${outputRecords.length}-records`;
+
+    if (format === "json") {
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.json"`);
+      return res.json({
+        totalRecords: allRecords.length,
+        uniqueEntities: outputRecords.length,
+        searches: searchNames,
+        records: outputRecords,
+      });
+    }
+
+    if (format === "xlsx") {
+      const rows = outputRecords.map((r) => ({
+        Rank: r.rank,
+        Entity: r.name,
+        Category: r.category,
+        Contact: r.contact,
+        Email: r.email,
+        Phone: r.phone,
+        Website: r.website,
+        Veracity: `${Math.round(r.confidence * 100)}%`,
+        Status: r.status,
+        "Origin Datasets": r.searches,
+        "Outreach Status": r.outreach_status,
+        "Outreach Note": r.outreach_note,
+        Sources: r.sources,
+      }));
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), "Merged Dataset");
+      const buffer = XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      res.send(buffer);
+      return;
+    }
+
+    // Default: CSV
+    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Veracity", "Status", "Origin Datasets", "Outreach Status", "Outreach Note", "Sources"];
+    const csvRows = outputRecords.map((r) => [
+      r.rank,
+      JSON.stringify(r.name ?? ""),
+      JSON.stringify(r.category ?? ""),
+      JSON.stringify(r.contact ?? ""),
+      JSON.stringify(r.email ?? ""),
+      JSON.stringify(r.phone ?? ""),
+      JSON.stringify(r.website ?? ""),
+      `${Math.round(r.confidence * 100)}%`,
+      JSON.stringify(r.status ?? ""),
+      JSON.stringify(r.searches ?? ""),
+      JSON.stringify(r.outreach_status ?? ""),
+      JSON.stringify(r.outreach_note ?? ""),
+      JSON.stringify(r.sources ?? ""),
+    ].join(","));
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+    res.send([headers.join(","), ...csvRows].join("\n"));
+  });
+
   app.get("/api/jobs/:id/outreach", (req, res) => {
     const job = ownJob(req, res);
     if (!job) return;
@@ -443,6 +638,8 @@ async function main() {
     if (conflict.status !== "PENDING") return fail(res, req, 409, "ALREADY_RESOLVED", "This conflict is already resolved.");
     ok(res, req, { conflict: db.resolveConflict(conflict.id, body.decision, authOf(req).user.id) });
   });
+
+  mountAgents(app, db, { ok, fail, authOf });
 
   app.use("/api", (req, res) => fail(res, req, 404, "NOT_FOUND", "No such API route."));
 

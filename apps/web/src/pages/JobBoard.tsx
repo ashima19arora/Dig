@@ -1,7 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Clock, Download, FileText, Filter, Pencil, Play, RotateCw, Search, Upload, X } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Clock,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  Filter,
+  Mail,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
+  Phone,
+  Play,
+  RotateCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Upload,
+  X,
+} from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ACTIVE_STATES,
   api,
@@ -16,7 +38,7 @@ import {
   type JobProgress,
 } from "../api";
 import { AppWindow, type Crumb } from "../components/Shell";
-import { notifyError } from "../toast";
+import { notify, notifyError } from "../toast";
 
 type Pair = [string, string];
 
@@ -29,8 +51,8 @@ const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = 
   },
   JUDGE_LOOKUP: {
     noun: "people",
-    columns: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Judged / mentored at"], ["email", "Email"]],
-    cards: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Judged / mentored at"], ["email", "Email"], ["profile_url", "Profile"], ["last_verified", "Last verified"]],
+    columns: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Event"], ["email", "Email"]],
+    cards: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Event (judged, mentored or spoke at)"], ["email", "Email"], ["profile_url", "Profile"], ["last_verified", "Last verified"]],
   },
   JOB_LOOKUP: {
     noun: "roles",
@@ -53,6 +75,9 @@ const LINK_FIELDS = new Set(["website", "profile_url"]);
 const STAGE_LABELS: Record<string, string> = {
   QUEUED: "Queued",
   COLLECTING: "Searching the web and extracting sponsors",
+  ENRICHING: "Finding contact paths",
+  IDENTITY_RESOLUTION: "Matching identities",
+  TRUST_EVALUATION: "Scoring trust",
   NORMALIZING: "Normalizing",
   DEDUPLICATING: "Removing duplicates",
   VALIDATING: "Validating",
@@ -60,9 +85,150 @@ const STAGE_LABELS: Record<string, string> = {
   ANNOTATING: "Writing notes",
 };
 
-type Tab = "all" | "review" | "verified";
+type Tab = "all" | "review" | "verified" | "reachable" | "highConfidence" | "uncontacted";
 /** Keyed by canonicalEntityId: record ids change every version, the entity key does not. */
 type Panel = { kind: "record"; key: string } | { kind: "diff" } | null;
+
+function isReachable(record: DatasetRecord) {
+  const email = record.fields.email || record.contactability?.channels?.email?.value;
+  const phone = record.fields.phone || record.contactability?.channels?.phone?.value;
+  return Boolean(email?.trim() || phone?.trim());
+}
+
+function getEmail(record: DatasetRecord): string | null {
+  const val = record.fields.email || record.contactability?.channels?.email?.value;
+  if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) return val.trim();
+  return null;
+}
+
+function getWebsite(record: DatasetRecord): string | null {
+  const val = record.fields.website || record.contactability?.channels?.website?.value;
+  if (val && /^https?:\/\//i.test(val.trim())) return val.trim();
+  if (val && /\.[a-z]{2,}/i.test(val.trim())) return `https://${val.trim()}`;
+  return null;
+}
+
+function getDomain(url: string | null): string | null {
+  if (!url) return null;
+  return url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
+}
+
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "icloud.com",
+  "proton.me",
+  "protonmail.com",
+  "aol.com",
+  "mail.com",
+  "zoho.com",
+]);
+
+function getCompanyDomain(record: DatasetRecord): string | null {
+  // 1. Explicit website field
+  const website = record.fields.website || record.contactability?.channels?.website?.value;
+  if (website) {
+    const clean = website.replace(/^https?:\/\/(www\.)?/, "").split("/")[0].trim().toLowerCase();
+    if (clean && clean.includes(".")) return clean;
+  }
+
+  // 2. Work email domain
+  const email = record.fields.email || record.contactability?.channels?.email?.value;
+  if (email && email.includes("@")) {
+    const domain = email.split("@")[1]?.trim().toLowerCase();
+    if (domain && domain.includes(".") && !GENERIC_EMAIL_DOMAINS.has(domain)) {
+      return domain;
+    }
+  }
+
+  // 3. Evidence sources
+  if (record.evidence && record.evidence.length > 0) {
+    const rawName = (record.fields.company_name || record.fields.person_name || record.label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const ev of record.evidence) {
+      if (ev.sourceUrl) {
+        const evDomain = ev.sourceUrl.replace(/^https?:\/\/(www\.)?/, "").split("/")[0].trim().toLowerCase();
+        if (
+          rawName.length >= 3 &&
+          evDomain.replace(/[^a-z0-9]/g, "").includes(rawName) &&
+          !evDomain.includes("wikipedia") &&
+          !evDomain.includes("linkedin") &&
+          !evDomain.includes("twitter") &&
+          !evDomain.includes("x.com") &&
+          !evDomain.includes("medium.com") &&
+          !evDomain.includes("github.com")
+        ) {
+          return evDomain;
+        }
+      }
+    }
+  }
+
+  // 4. Derive from company / entity name
+  const name = record.fields.company_name || record.fields.affiliation || record.label || "";
+  const cleaned = name
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|corp|corporation|technologies|tech|ai|group|labs|software|co)\b/gi, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+
+  if (cleaned.length >= 2 && cleaned.length <= 25) {
+    return `${cleaned}.com`;
+  }
+
+  return null;
+}
+
+export function CompanyLogo({
+  record,
+  name,
+  className = "company-avatar",
+}: {
+  record: DatasetRecord;
+  name: string;
+  className?: string;
+}) {
+  const domain = useMemo(() => getCompanyDomain(record), [record]);
+  const [providerIndex, setProviderIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setProviderIndex(0);
+    setFailed(false);
+  }, [domain, record.id]);
+
+  const initial = (name[0] || "?").toUpperCase();
+
+  if (!domain || failed) {
+    return <div className={`${className} fallback`}>{initial}</div>;
+  }
+
+  // Multi-tier high-res favicon providers (Google 64px, DuckDuckGo)
+  const providers = [
+    `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=64`,
+    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+  ];
+
+  const currentSrc = providers[providerIndex];
+
+  return (
+    <div className={className} title={name}>
+      <img
+        src={currentSrc}
+        alt={name}
+        loading="lazy"
+        onError={() => {
+          if (providerIndex < providers.length - 1) {
+            setProviderIndex((i) => i + 1);
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+    </div>
+  );
+}
 
 function isActive(status: string | undefined) {
   return Boolean(status && ACTIVE_STATES.includes(status));
@@ -70,6 +236,8 @@ function isActive(status: string | undefined) {
 
 export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [live, setLive] = useState<JobProgress | null>(null);
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
@@ -79,6 +247,14 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const [report, setReport] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const [runStartedAt, setRunStartedAt] = useState(() => Date.now());
   const [, setTick] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pitchModalRecord, setPitchModalRecord] = useState<DatasetRecord | null>(null);
+
+  const entity = params.get("entity");
+  useEffect(() => {
+    if (entity) setPanel({ kind: "record", key: entity });
+  }, [entity]);
 
   const jobQ = useQuery({
     queryKey: ["job", jobId],
@@ -204,45 +380,141 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
     return map;
   }, [conflicts, records]);
 
+  const job = jobQ.data?.job;
+  const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
+
   const needsReview = (record: DatasetRecord) =>
     (conflictsFor.get(record.id) ?? []).some((conflict) => conflict.status === "PENDING") || record.status !== "verified";
-
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    let list = records.filter((record) => {
-      if (tab === "review" && !needsReview(record)) return false;
-      if (tab === "verified" && needsReview(record)) return false;
-      if (!needle) return true;
-      return (VIEWS[jobQ.data?.job.blueprint.intent ?? ""] ?? VIEWS.SPONSOR_LOOKUP!).columns.some(([key]) =>
-        (record.fields[key] ?? "").toLowerCase().includes(needle),
-      );
-    });
-    if (sort) {
-      const value = (record: DatasetRecord) => (sort.key === "status" ? statusText(record) : record.fields[sort.key] ?? "").toLowerCase();
-      list = [...list].sort((a, b) => {
-        const left = value(a);
-        const right = value(b);
-        if (!left !== !right) return left ? -1 : 1; // blanks last either way
-        return left.localeCompare(right) * sort.dir;
-      });
-    }
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, tab, search, sort, conflictsFor]);
 
   function statusText(record: DatasetRecord) {
     if ((conflictsFor.get(record.id) ?? []).some((conflict) => conflict.status === "PENDING")) return "Needs review";
     return { verified: "Verified", needs_review: "Needs review", possible_duplicate: "Possible duplicate", incomplete: "Incomplete" }[record.status];
   }
 
-  // Open the first record (preferring one that needs a decision) once data arrives.
+  const rows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    let list = records.filter((record) => {
+      if (tab === "review" && !needsReview(record)) return false;
+      if (tab === "verified" && needsReview(record)) return false;
+      if (tab === "reachable" && !isReachable(record)) return false;
+      if (tab === "highConfidence" && (record.confidence ?? 0) < 0.8) return false;
+      if (tab === "uncontacted" && (outreach[record.canonicalEntityId]?.status ?? "pending") !== "pending") return false;
+      if (!needle) return true;
+      return view.columns.some(([key]) =>
+        (record.fields[key] ?? "").toLowerCase().includes(needle),
+      );
+    });
+    if (sort) {
+      const value = (record: DatasetRecord) => {
+        if (sort.key === "status") return statusText(record);
+        if (sort.key === "confidence") return String(record.confidence ?? 0);
+        return record.fields[sort.key] ?? "";
+      };
+      list = [...list].sort((a, b) => {
+        const left = value(a).toLowerCase();
+        const right = value(b).toLowerCase();
+        if (!left !== !right) return left ? -1 : 1; // blanks last either way
+        return left.localeCompare(right) * sort.dir;
+      });
+    }
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, tab, search, sort, conflictsFor, outreach, view]);
+
+  const reviewCount = useMemo(() => records.filter(needsReview).length, [records, conflictsFor]);
+  const reachableCount = useMemo(() => records.filter(isReachable).length, [records]);
+  const highConfidenceCount = useMemo(() => records.filter((r) => (r.confidence ?? 0) >= 0.8).length, [records]);
+  const uncontactedCount = useMemo(
+    () => records.filter((r) => (outreach[r.canonicalEntityId]?.status ?? "pending") === "pending").length,
+    [records, outreach],
+  );
+
+  const toggleSelectRow = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === rows.length && rows.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(rows.map((r) => r.id)));
+    }
+  };
+
+  const batchSetOutreach = async (nextStatus: OutreachStatus) => {
+    const selectedRecords = records.filter((r) => selectedIds.has(r.id));
+    for (const rec of selectedRecords) {
+      void setOutreach(rec.canonicalEntityId, { status: nextStatus });
+    }
+    notify(`Updated ${selectedRecords.length} records to "${OUTREACH[nextStatus].label}"`, "info");
+  };
+
+  const exportSelectedCsv = () => {
+    const selectedRecords = records.filter((r) => selectedIds.has(r.id));
+    if (selectedRecords.length === 0) return;
+    const cols = view.columns;
+    const header = ["Rank", ...cols.map(([, label]) => label), "Outreach", "Status", "Confidence", "Note"].join(",");
+    const csvRows = selectedRecords.map((r) => {
+      const mark = outreach[r.canonicalEntityId];
+      const values = [
+        String(r.rank ?? ""),
+        ...cols.map(([key]) => JSON.stringify(r.fields[key] ?? "")),
+        JSON.stringify(OUTREACH[mark?.status ?? "pending"]?.label ?? "Not contacted"),
+        JSON.stringify(statusText(r)),
+        `${Math.round((r.confidence ?? 0.8) * 100)}%`,
+        JSON.stringify(mark?.note ?? ""),
+      ];
+      return values.join(",");
+    });
+    const blob = new Blob([[header, ...csvRows].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `dig-selected-${selectedRecords.length}-records.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    notify(`Exported ${selectedRecords.length} selected records`, "info");
+  };
+
+  const copyText = (text: string, id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    void navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 1800);
+  };
+
+  const [lastSelectedEntity, setLastSelectedEntity] = useState<string | null>(null);
+  const initialSelectionDoneRef = useRef(false);
+
   useEffect(() => {
+    if (panel?.kind === "record") {
+      setLastSelectedEntity(panel.key);
+    }
+  }, [panel]);
+
+  // Open the first record (preferring one that needs a decision) once data arrives initially.
+  useEffect(() => {
+    if (initialSelectionDoneRef.current) return;
     if (records.length === 0 || !conflictsQ.isSuccess) return;
-    if (panel?.kind === "diff") return;
-    if (panel?.kind === "record" && records.some((record) => record.canonicalEntityId === panel.key)) return;
+    if (entity) {
+      setPanel({ kind: "record", key: entity });
+      setLastSelectedEntity(entity);
+      initialSelectionDoneRef.current = true;
+      return;
+    }
     const first = records.find((record) => (conflictsFor.get(record.id) ?? []).some((c) => c.status === "PENDING")) ?? records[0];
-    if (first) setPanel({ kind: "record", key: first.canonicalEntityId });
-  }, [records, conflictsFor, panel, conflictsQ.isSuccess]);
+    if (first) {
+      setPanel({ kind: "record", key: first.canonicalEntityId });
+      setLastSelectedEntity(first.canonicalEntityId);
+      initialSelectionDoneRef.current = true;
+    }
+  }, [records, conflictsFor, conflictsQ.isSuccess, entity]);
 
   useEffect(() => {
     if (!downloadOpen) return;
@@ -251,10 +523,16 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
     return () => window.removeEventListener("click", close);
   }, [downloadOpen]);
 
-  const job = jobQ.data?.job;
-  const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
+  useEffect(() => {
+    if (!panel) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanel(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [panel]);
+
   const selected = panel?.kind === "record" ? records.find((record) => record.canonicalEntityId === panel.key) : undefined;
-  const reviewCount = records.filter(needsReview).length;
   const progress = live ?? (running ? jobQ.data?.progress : null) ?? null;
   const failed = !running && (job?.status === "FAILED" || live?.status === "FAILED");
   const diff = diffQ.data?.diff ?? null;
@@ -311,7 +589,14 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             {job ? <EditableTitle jobId={jobId} name={job.name} /> : <h1>Loading…</h1>}
             {job && <div className="q">Query — “{job.query}”</div>}
           </div>
-          <div style={{ display: "flex", gap: 8, position: "relative" }}>
+          <div style={{ display: "flex", gap: 8, position: "relative", alignItems: "center" }}>
+            <button
+              className="btn blue"
+              title="Launch an autonomous Agent Mission with this dataset"
+              onClick={() => navigate(`/agents/mission?job=${jobId}`)}
+            >
+              <Sparkles size={13} /> Launch Mission
+            </button>
             <button
               className="btn"
               disabled={!version}
@@ -451,25 +736,66 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   {(
                     [
                       ["all", "All", records.length],
-                      ["review", "Needs review", reviewCount],
-                      ["verified", "Verified", records.length - reviewCount],
+                      ["reachable", "✉️ Reachable", reachableCount],
+                      ["highConfidence", "⚡ High Veracity", highConfidenceCount],
+                      ["uncontacted", "🕒 Uncontacted", uncontactedCount],
+                      ...(reviewCount > 0 ? [["review", "⚠️ Needs review", reviewCount] as const] : []),
                     ] as const
                   ).map(([key, label, count]) => (
-                    <button key={key} className={tab === key ? "on" : undefined} onClick={() => setTab(key)}>
+                    <button key={key} className={tab === key ? "on" : undefined} onClick={() => setTab(key as Tab)}>
                       {label}
                       <span className="n">{count}</span>
                     </button>
                   ))}
                 </div>
-                <label className="search">
-                  <Search size={14} />
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${view.noun}`} />
-                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label className="search">
+                    <Search size={14} />
+                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${view.noun}…`} />
+                  </label>
+                  {!selected && (
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        const target = lastSelectedEntity
+                          ? records.find((r) => r.canonicalEntityId === lastSelectedEntity) ?? records[0]
+                          : records[0];
+                        if (target) setPanel({ kind: "record", key: target.canonicalEntityId });
+                      }}
+                      title="Open Evidence Sidebar"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                        fontWeight: 550,
+                        padding: "5px 11px",
+                        height: 32,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <PanelRightOpen size={13} />
+                      <span>Evidence Sidebar</span>
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="table-scroll">
                 <table className="data-grid">
                   <thead>
                     <tr>
+                      <th style={{ width: 34, textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          aria-label="Select all rows"
+                          checked={rows.length > 0 && selectedIds.size === rows.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < rows.length;
+                          }}
+                          onChange={toggleSelectAll}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </th>
                       <th className="n">#</th>
                       {[...view.columns.map(([key, label]) => ({ key, label })), { key: "status", label: "Verification" }].map((column, index) => (
                         <Fragment key={column.key}>
@@ -496,39 +822,152 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                         </Fragment>
                       ))}
                       <th>Note</th>
+                      <th style={{ width: 68, textAlign: "center" }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((record) => {
                       const status = statusText(record);
                       const mark = outreach[record.canonicalEntityId];
+                      const isRowSelected = selectedIds.has(record.id);
                       return (
                         <tr
                           key={record.id}
-                          className={panel?.kind === "record" && panel.key === record.canonicalEntityId ? "sel" : undefined}
-                          onClick={() => setPanel({ kind: "record", key: record.canonicalEntityId })}
+                          className={`${panel?.kind === "record" && panel.key === record.canonicalEntityId ? "sel" : ""}${isRowSelected ? " row-selected" : ""}`}
+                          onClick={() => {
+                            setPanel({ kind: "record", key: record.canonicalEntityId });
+                            setLastSelectedEntity(record.canonicalEntityId);
+                          }}
                         >
+                          <td style={{ textAlign: "center" }} onClick={(e) => toggleSelectRow(record.id, e)}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${record.label || "row"}`}
+                              checked={isRowSelected}
+                              onChange={() => {}}
+                              style={{ cursor: "pointer" }}
+                            />
+                          </td>
                           <td className="n">{record.rank}</td>
-                          {view.columns.map(([key], index) => (
-                            <Fragment key={key}>
-                              <Cell className={index === 0 ? "co" : undefined} value={record.fields[key]} />
-                              {index === 0 && (
-                                <td className="oc">
-                                  <OutreachButton status={mark?.status ?? "pending"} onChange={(next) => void setOutreach(record.canonicalEntityId, { status: next })} />
+                          {view.columns.map(([key], index) => {
+                            if (index === 0) {
+                              const primaryName = record.fields[key] || record.label || "—";
+                              const website = getWebsite(record);
+                              const domain = getDomain(website);
+                              return (
+                                <Fragment key={key}>
+                                  <td className="co" title={primaryName}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                      <CompanyLogo record={record} name={primaryName} />
+                                      <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                          {primaryName}
+                                        </div>
+                                        {website && (
+                                          <a
+                                            href={website}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="company-sub-link"
+                                            onClick={(e) => e.stopPropagation()}
+                                            title={website}
+                                          >
+                                            {domain} <ExternalLink size={10} style={{ marginLeft: 3 }} />
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="oc">
+                                    <OutreachButton
+                                      status={mark?.status ?? "pending"}
+                                      onChange={(next) => void setOutreach(record.canonicalEntityId, { status: next })}
+                                    />
+                                  </td>
+                                </Fragment>
+                              );
+                            }
+                            if (key === "email") {
+                              const email = getEmail(record);
+                              const companyName = record.fields.company_name || record.label || "";
+                              const isCopied = copiedId === `email-${record.id}`;
+                              if (email) {
+                                return (
+                                  <td key={key}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <a
+                                        href={`mailto:${email}`}
+                                        className="email-link"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title={`Email ${email}`}
+                                      >
+                                        <Mail size={12} style={{ flexShrink: 0, opacity: 0.7 }} />
+                                        <span>{email}</span>
+                                      </a>
+                                      <button
+                                        className="mini-copy-btn"
+                                        title="Copy email address"
+                                        onClick={(e) => copyText(email, `email-${record.id}`, e)}
+                                      >
+                                        {isCopied ? <Check size={11} color="#248a3d" /> : <Copy size={11} />}
+                                      </button>
+                                    </div>
+                                  </td>
+                                );
+                              }
+                              const linkedinQuery = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
+                              return (
+                                <td key={key}>
+                                  <a
+                                    href={linkedinQuery}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="linkedin-finder-link"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={`Find partnership contacts for ${companyName} on LinkedIn`}
+                                  >
+                                    Find on LinkedIn <ExternalLink size={10} />
+                                  </a>
                                 </td>
-                              )}
-                            </Fragment>
-                          ))}
+                              );
+                            }
+                            return <Cell key={key} value={record.fields[key]} />;
+                          })}
                           <td>
-                            <span className={`st${status === "Needs review" ? " review" : status === "Verified" ? "" : " warn"}`}>{status}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span className={`st${status === "Needs review" ? " review" : status === "Verified" ? "" : " warn"}`}>
+                                {status}
+                              </span>
+                              {record.confidence !== undefined && (
+                                <span
+                                  className={`veracity-pill ${record.confidence >= 0.8 ? "high" : "med"}`}
+                                  title={`Veracity: ${Math.round(record.confidence * 100)}%`}
+                                >
+                                  {Math.round(record.confidence * 100)}%
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <NoteCell note={mark?.note ?? ""} who={mark?.updatedBy ?? null} onSave={(note) => void setOutreach(record.canonicalEntityId, { note })} />
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              className="btn"
+                              style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
+                              title="Draft AI Pitch"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPitchModalRecord(record);
+                              }}
+                            >
+                              <Sparkles size={11} color="#4c6fff" /> Pitch
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={view.columns.length + 4} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
+                        <td colSpan={view.columns.length + 6} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
                           Nothing matches this view.
                         </td>
                       </tr>
@@ -545,13 +984,58 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 view={view}
                 conflicts={conflictsFor.get(selected.id) ?? []}
                 versionNumber={version.versionNumber}
+                outreachStatus={outreach[selected.canonicalEntityId]?.status ?? "pending"}
+                onDraftPitch={() => setPitchModalRecord(selected)}
                 resolving={resolve.isPending ? resolve.variables?.id : undefined}
                 onResolve={(id, decision) => resolve.mutate({ id, decision })}
                 resolveError={resolve.isError ? resolve.error.message : null}
                 onClose={() => setPanel(null)}
+                copiedId={copiedId}
+                copyText={copyText}
               />
             )}
           </div>
+        )}
+
+        {selectedIds.size > 0 && (
+          <div className="batch-actions-bar">
+            <span className="batch-count">
+              <b>{selectedIds.size}</b> selected
+            </span>
+            <button className="btn" onClick={() => void batchSetOutreach("interested")}>
+              <Check size={13} style={{ color: "#248a3d" }} /> Mark Interested
+            </button>
+            <button className="btn" onClick={() => void batchSetOutreach("pending")}>
+              <Clock size={13} /> Mark Uncontacted
+            </button>
+            <button className="btn" onClick={exportSelectedCsv}>
+              <Download size={13} /> Export Selected (.csv)
+            </button>
+            <button
+              className="btn blue"
+              onClick={() => navigate(`/agents/mission?job=${jobId}`)}
+              title="Launch mission for dataset"
+            >
+              <Sparkles size={13} /> Launch Mission
+            </button>
+            <button
+              className="btn"
+              style={{ padding: "4px 8px" }}
+              onClick={() => setSelectedIds(new Set())}
+              title="Clear selection"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {pitchModalRecord && (
+          <PitchModal
+            record={pitchModalRecord}
+            jobName={job?.name ?? "Event Partnership"}
+            query={job?.query ?? ""}
+            onClose={() => setPitchModalRecord(null)}
+          />
         )}
 
         <div className="board-foot">
@@ -705,15 +1189,171 @@ function Cell({ value, className }: { value?: string; className?: string }) {
   );
 }
 
+function DossierCard({
+  record,
+  primary,
+  outreachStatus,
+  onDraftPitch,
+  copiedId,
+  copyText,
+}: {
+  record: DatasetRecord;
+  primary?: string;
+  outreachStatus: OutreachStatus;
+  onDraftPitch: () => void;
+  copiedId: string | null;
+  copyText: (text: string, id: string, e?: React.MouseEvent) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const name = record.fields[primary ?? ""] ?? record.label;
+  const email = getEmail(record);
+  const phone = record.fields.phone || record.contactability?.channels?.phone?.value;
+  const website = getWebsite(record);
+  const primaryChannel = email ? "Email" : phone ? "Phone" : website ? "Web" : "None";
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${name} ${record.fields.role || record.fields.type || "sponsor leadership"} contact email`)}`;
+
+  const copyDossier = () => {
+    const summary = [
+      `${name} · Intelligence Dossier`,
+      `Veracity: ${Math.round((record.confidence ?? 0.8) * 100)}%`,
+      `Outreach Status: ${OUTREACH[outreachStatus]?.label ?? "Not contacted"}`,
+      `Primary Channel: ${primaryChannel}`,
+      email ? `Email: ${email}` : null,
+      phone ? `Phone: ${phone}` : null,
+      website ? `Website: ${website}` : null,
+      record.fields.role ? `Role/Type: ${record.fields.role}` : null,
+      `Evidence Sources: ${record.sourceCount ?? 1} verified citations`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    void navigator.clipboard.writeText(summary);
+    setCopied(true);
+    notify(`Copied intelligence dossier for ${name}`, "info");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="dossier-card">
+      <div className="dossier-head">
+        <CompanyLogo record={record} name={name} className="dossier-avatar" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {name}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+            Intelligence Dossier · ID {record.canonicalEntityId.slice(0, 8)}
+          </div>
+        </div>
+        <span className={`veracity-pill ${(record.confidence ?? 0.8) >= 0.8 ? "high" : "med"}`}>
+          {Math.round((record.confidence ?? 0.8) * 100)}% Veracity
+        </span>
+      </div>
+
+      <div className="dossier-meta-grid">
+        <div className="dossier-meta-item">
+          <span className="lbl">Outreach</span>
+          <span className="val">{OUTREACH[outreachStatus]?.label ?? "Not contacted"}</span>
+        </div>
+        <div className="dossier-meta-item">
+          <span className="lbl">Primary Channel</span>
+          <span className="val">{primaryChannel}</span>
+        </div>
+        <div className="dossier-meta-item">
+          <span className="lbl">Evidence Sources</span>
+          <span className="val">{record.sourceCount ?? 1}</span>
+        </div>
+      </div>
+
+      {/* Quick 1-click copy chips for email & phone */}
+      {(email || phone) && (
+        <div className="dossier-quick-copy-bar">
+          {email && (
+            <button
+              type="button"
+              className="dossier-quick-copy-chip"
+              onClick={(e) => copyText(email, `dossier-email-${record.id}`, e)}
+              title="Click to copy verified email"
+            >
+              <Mail size={11} color="#4c6fff" />
+              <span className="dossier-quick-copy-val">{email}</span>
+              {copiedId === `dossier-email-${record.id}` ? (
+                <Check size={10} color="#10b981" />
+              ) : (
+                <Copy size={10} style={{ opacity: 0.6 }} />
+              )}
+            </button>
+          )}
+          {phone && (
+            <button
+              type="button"
+              className="dossier-quick-copy-chip"
+              onClick={(e) => copyText(phone, `dossier-phone-${record.id}`, e)}
+              title="Click to copy verified phone"
+            >
+              <Phone size={11} color="#10b981" />
+              <span className="dossier-quick-copy-val">{phone}</span>
+              {copiedId === `dossier-phone-${record.id}` ? (
+                <Check size={10} color="#10b981" />
+              ) : (
+                <Copy size={10} style={{ opacity: 0.6 }} />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Optimized Action Suite: Hero Draft Pitch + Balanced 2-col Secondary Grid */}
+      <div className="dossier-actions-suite">
+        <button
+          className="dossier-btn-hero"
+          onClick={onDraftPitch}
+          title="Draft personalized AI outreach pitch"
+        >
+          <Sparkles size={13} />
+          <span>Draft AI Outreach Pitch</span>
+        </button>
+
+        <div className="dossier-actions-grid">
+          <a
+            href={searchUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="dossier-btn-sub"
+            title="Search decision-makers and leads for this entity"
+          >
+            <Search size={12} />
+            <span>Search Leads</span>
+            <ExternalLink size={10} style={{ opacity: 0.6 }} />
+          </a>
+
+          <button
+            className={`dossier-btn-sub ${copied ? "copied" : ""}`}
+            onClick={copyDossier}
+            title="Copy complete intelligence dossier"
+          >
+            {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+            <span>{copied ? "Copied!" : "Copy Dossier"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecordPanel(props: {
   record: DatasetRecord;
   view: { columns: Pair[]; cards: Pair[] };
   conflicts: Conflict[];
   versionNumber: number;
+  outreachStatus: OutreachStatus;
+  onDraftPitch: () => void;
   resolving?: string;
   onResolve: (id: string, decision: "NEW" | "OLD") => void;
   resolveError: string | null;
   onClose: () => void;
+  copiedId: string | null;
+  copyText: (text: string, id: string, e?: React.MouseEvent) => void;
 }) {
   const { record } = props;
   const pending = props.conflicts.filter((conflict) => conflict.status === "PENDING");
@@ -724,14 +1364,31 @@ function RecordPanel(props: {
     <aside className="detail">
       <div className="detail-head">
         <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="sidebar-eyebrow">
+            <ShieldCheck size={11} color="#10b981" />
+            <span>Proof &amp; Evidence Dossier</span>
+          </div>
           <h2>{record.fields[primary ?? ""] ?? record.label}</h2>
           <div className="sub">{subtitle}</div>
         </div>
-        <button className="btn" onClick={props.onClose} aria-label="Close">
-          <X size={14} />
+        <button
+          className="sidebar-close-btn"
+          onClick={props.onClose}
+          title="Collapse Evidence Sidebar"
+          aria-label="Collapse sidebar"
+        >
+          <PanelRightClose size={15} />
         </button>
       </div>
       <div className="detail-body">
+        <DossierCard
+          record={record}
+          primary={primary}
+          outreachStatus={props.outreachStatus}
+          onDraftPitch={props.onDraftPitch}
+          copiedId={props.copiedId}
+          copyText={props.copyText}
+        />
         {pending.map((conflict) => (
           <div key={conflict.id} className="card conflict">
             <h4>
@@ -780,6 +1437,8 @@ function RecordPanel(props: {
           </div>
         ))}
 
+        <ContactPaths record={record} />
+
         {props.view.cards.map(([key, label]) => {
           const value = record.fields[key];
           if (!value) return null;
@@ -796,6 +1455,205 @@ function RecordPanel(props: {
         })}
       </div>
     </aside>
+  );
+}
+
+function PitchModal({
+  record,
+  jobName,
+  query,
+  onClose,
+}: {
+  record: DatasetRecord;
+  jobName: string;
+  query: string;
+  onClose: () => void;
+}) {
+  const companyName = record.fields.company_name || record.label || "Partnership Team";
+  const contactName = record.fields.contact || record.fields.person_name || "";
+  const email = getEmail(record);
+  const eventName = record.fields.event_name || jobName || "our upcoming event";
+
+  const greeting = contactName ? `Hi ${contactName},` : `Hi ${companyName} team,`;
+  const defaultSubject = `Partnership opportunity: ${eventName} & ${companyName}`;
+  const defaultBody = `${greeting}
+
+I hope this message finds you well. I'm reaching out from the team organizing ${eventName}.
+
+We've been following ${companyName}'s work and innovative focus, and we believe there is strong alignment between your developer & technology initiatives and our audience.
+
+We are bringing together top engineers, creators, and leaders, and we would love to discuss welcoming ${companyName} as a key sponsor and partner.
+
+Could we schedule a brief 10-minute chat this week to share our deck and sponsorship tiers?
+
+Best regards,
+Partnership Director, ${eventName}`;
+
+  const [subject, setSubject] = useState(defaultSubject);
+  const [body, setBody] = useState(defaultBody);
+  const [copied, setCopied] = useState(false);
+
+  const copyPitch = () => {
+    void navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+    setCopied(true);
+    notify(`Copied pitch for ${companyName} to clipboard`, "info");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const mailtoHref = email
+    ? `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    : null;
+
+  return (
+    <div className="pitch-modal-overlay" onClick={onClose}>
+      <div className="pitch-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="pitch-modal-head">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <CompanyLogo record={record} name={companyName} className="dossier-avatar" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Draft AI Outreach Pitch</div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                Personalized for {companyName} {email ? `· ${email}` : "· (No email listed)"}
+              </div>
+            </div>
+          </div>
+          <button className="btn" onClick={onClose} aria-label="Close modal">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="pitch-modal-body">
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-2)", display: "block", marginBottom: 4 }}>
+              Subject
+            </label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--hairline)",
+                background: "var(--card)",
+                color: "var(--text)",
+                fontSize: 13,
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-2)", display: "block", marginBottom: 4 }}>
+              Pitch Message
+            </label>
+            <textarea
+              rows={11}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--hairline)",
+                background: "var(--card)",
+                color: "var(--text)",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="pitch-modal-footer">
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+            {email ? `Recipient: ${email}` : "No direct email: copy and send via LinkedIn"}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" onClick={copyPitch}>
+              {copied ? <Check size={13} color="#248a3d" /> : <Copy size={13} />}
+              <span>{copied ? "Copied" : "Copy Pitch"}</span>
+            </button>
+            {mailtoHref && (
+              <a href={mailtoHref} className="btn blue" style={{ textDecoration: "none" }}>
+                <Mail size={13} /> Open in Email App
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PATHS = [
+  ["Email", "email"],
+  ["Phone", "phone"],
+  ["LinkedIn", "linkedin"],
+  ["GitHub", "github"],
+  ["Website", "website"],
+  ["Contact page", "contactPage"],
+] as const;
+
+const PATH_STATUS: Record<string, string> = {
+  VERIFIED: "Verified",
+  IDENTITY_MATCHED: "Identity matched",
+  PROVIDER_MATCHED: "Provider matched",
+  LIKELY: "Likely",
+  NEEDS_REVIEW: "Needs review",
+  NOT_FOUND: "Not found",
+};
+
+const TRUST_STATUS: Record<string, string> = {
+  HIGH_TRUST: "High trust",
+  MEDIUM_TRUST: "Medium trust",
+  NEEDS_REVIEW: "Needs review",
+  UNTRUSTED: "Untrusted",
+};
+
+function ContactPaths({ record }: { record: DatasetRecord }) {
+  const book = record.contactability;
+  if (!book) return null;
+  return (
+    <div className="card">
+      <div className="cap">Contact paths</div>
+      <div className="paths">
+        {PATHS.map(([label, key]) => {
+          const item = book.channels[key];
+          const found = Boolean(item.value) && item.status !== "NOT_FOUND";
+          const href = found && item.value && /^https?:\/\//i.test(item.value) ? item.value : null;
+          return (
+            <div key={key} className="path">
+              <span className={found ? "ok" : "miss"}>{found ? "✓" : "—"}</span>
+              <span>{label}</span>
+              <span>
+                {href ? (
+                  <a href={href} target="_blank" rel="noreferrer">
+                    {href.replace(/^https?:\/\/(www\.)?/, "")}
+                  </a>
+                ) : found ? (
+                  item.value
+                ) : (
+                  "Not found"
+                )}
+                <span className="meta">
+                  {PATH_STATUS[item.status] ?? item.status}
+                  {found ? ` · ${Math.round(item.confidence * 100)}%` : ""}
+                  {item.provider && item.provider !== "research" ? ` · ${item.provider}` : ""}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {record.trust && (
+        <div className="trust-line">
+          Trust {Math.round(record.trust.overallTrust * 100)}% · {TRUST_STATUS[record.trust.status] ?? record.trust.status}
+        </div>
+      )}
+    </div>
   );
 }
 

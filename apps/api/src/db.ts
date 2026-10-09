@@ -3,7 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { CollectionBlueprint, JobState, Schedule } from "@dig/schemas";
 import { comparisonKey } from "@dig/core";
-import type { AnnotationBatch, IntelligenceReport, PipelineResult, PublishedRecord } from "@dig/core";
+import type { AnnotationBatch, IntelligenceReport, PipelineResult, PublishedRecord, WorkflowGraph } from "@dig/core";
 import { env } from "./env.js";
 
 type Sql = string | number | bigint | null | Uint8Array;
@@ -28,6 +28,8 @@ export class DigDb {
     this.db.exec(sql);
     this.addColumn("users", "password_hash", "password_hash TEXT");
     this.addColumn("users", "role", "role TEXT NOT NULL DEFAULT ''");
+    this.addColumn("records", "contactability_json", "contactability_json TEXT");
+    this.addColumn("records", "trust_json", "trust_json TEXT");
     this.failDangling();
   }
 
@@ -220,7 +222,7 @@ export class DigDb {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `UPDATE jobs SET status = 'FAILED', updated_at = ? WHERE status IN ('QUEUED','COLLECTING','NORMALIZING','VALIDATING','DEDUPLICATING','RANKING','ANNOTATING')`,
+        `UPDATE jobs SET status = 'FAILED', updated_at = ? WHERE status IN ('QUEUED','COLLECTING','ENRICHING','IDENTITY_RESOLUTION','TRUST_EVALUATION','NORMALIZING','VALIDATING','DEDUPLICATING','RANKING','ANNOTATING')`,
       )
       .run(now);
     this.db
@@ -509,8 +511,8 @@ export class DigDb {
           );
         }
         this.run(
-          `INSERT INTO records (id, job_id, dataset_version_id, canonical_entity_id, fields_json, rank, activity_score, activity_components_json, confidence, confidence_components_json, status, validation_json, source_count, content_hash, flags_json, alternates_json, sources_json, annotation_json, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO records (id, job_id, dataset_version_id, canonical_entity_id, fields_json, rank, activity_score, activity_components_json, confidence, confidence_components_json, status, validation_json, source_count, content_hash, flags_json, alternates_json, sources_json, annotation_json, contactability_json, trust_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           record.id,
           input.jobId,
           versionId,
@@ -529,6 +531,8 @@ export class DigDb {
           JSON.stringify(record.alternates),
           JSON.stringify(record.sources),
           JSON.stringify(record.annotation),
+          record.contactability ? JSON.stringify(record.contactability) : null,
+          record.trust ? JSON.stringify(record.trust) : null,
           now,
           now,
         );
@@ -634,7 +638,7 @@ export class DigDb {
           conflict.confidence,
           conflict.reason,
           conflict.status === "AUTO_RESOLVED" ? now : null,
-          conflict.status === "AUTO_RESOLVED" ? "jev" : null,
+          conflict.status === "AUTO_RESOLVED" ? (conflict.provider === "jev" ? "jev" : "rules") : null,
           now,
           now,
         );
@@ -721,6 +725,8 @@ export class DigDb {
       sources: JSON.parse(row.sources_json),
       evidence: this.all<EvidenceRow>("SELECT * FROM evidence WHERE record_id = ?", row.id).map(mapEvidence),
       annotation: JSON.parse(row.annotation_json),
+      contactability: row.contactability_json ? JSON.parse(row.contactability_json) : undefined,
+      trust: row.trust_json ? JSON.parse(row.trust_json) : undefined,
     }));
   }
 
@@ -1008,7 +1014,364 @@ export class DigDb {
 
   active(jobId: string) {
     const job = this.job(jobId);
-    return Boolean(job && ["QUEUED", "COLLECTING", "NORMALIZING", "VALIDATING", "DEDUPLICATING", "RANKING", "ANNOTATING"].includes(job.status));
+    return Boolean(job && ["QUEUED", "COLLECTING", "ENRICHING", "IDENTITY_RESOLUTION", "TRUST_EVALUATION", "NORMALIZING", "VALIDATING", "DEDUPLICATING", "RANKING", "ANNOTATING"].includes(job.status));
+  }
+
+  listWorkflows(workspaceId: string) {
+    return this.all<{ id: string; name: string; template_id: string | null; updated_at: string; version_number: number | null; version_id: string | null }>(
+      `SELECT w.id, w.name, w.template_id, w.updated_at, v.version_number, v.id AS version_id
+       FROM workflows w
+       LEFT JOIN workflow_versions v ON v.id = (
+         SELECT id FROM workflow_versions WHERE workflow_id = w.id ORDER BY version_number DESC LIMIT 1
+       )
+       WHERE w.workspace_id = ?
+       ORDER BY w.updated_at DESC`,
+      workspaceId,
+    ).map((row) => ({
+      id: row.id,
+      name: row.name,
+      templateId: row.template_id,
+      updatedAt: row.updated_at,
+      versionNumber: row.version_number,
+      versionId: row.version_id,
+    }));
+  }
+
+  workflow(id: string) {
+    const row = this.get<{ id: string; workspace_id: string; name: string; template_id: string | null; updated_at: string }>(
+      "SELECT id, workspace_id, name, template_id, updated_at FROM workflows WHERE id = ?",
+      id,
+    );
+    if (!row) return undefined;
+    const version = this.latestWorkflowVersion(id);
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      name: row.name,
+      templateId: row.template_id,
+      updatedAt: row.updated_at,
+      versionId: version?.id ?? null,
+      versionNumber: version?.version_number ?? null,
+      graph: version ? (JSON.parse(version.graph_json) as WorkflowGraph) : { nodes: [], edges: [] },
+    };
+  }
+
+  createWorkflow(input: { workspaceId: string; name: string; templateId?: string | null; graph: WorkflowGraph; actorId: string }) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    this.transaction(() => {
+      this.run(
+        "INSERT INTO workflows (id, workspace_id, name, template_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        id,
+        input.workspaceId,
+        input.name,
+        input.templateId ?? null,
+        now,
+        now,
+      );
+      this.run(
+        "INSERT INTO workflow_versions (id, workflow_id, version_number, graph_json, created_at) VALUES (?, ?, 1, ?, ?)",
+        versionId,
+        id,
+        JSON.stringify(input.graph),
+        now,
+      );
+    });
+    this.audit(input.actorId, "workflow.created", "workflow", id, { name: input.name });
+    return this.workflow(id)!;
+  }
+
+  saveWorkflow(id: string, input: { name?: string; graph: WorkflowGraph; actorId: string }) {
+    const current = this.workflow(id);
+    if (!current) return undefined;
+    const now = new Date().toISOString();
+    const latest = this.latestWorkflowVersion(id);
+    const same = latest && latest.graph_json === JSON.stringify(input.graph);
+    const runs = latest
+      ? Number(this.get<{ n: number }>("SELECT COUNT(*) AS n FROM workflow_runs WHERE version_id = ?", latest.id)?.n ?? 0)
+      : 0;
+    this.transaction(() => {
+      this.run("UPDATE workflows SET name = ?, updated_at = ? WHERE id = ?", input.name ?? current.name, now, id);
+      if (!latest) {
+        this.run(
+          "INSERT INTO workflow_versions (id, workflow_id, version_number, graph_json, created_at) VALUES (?, ?, 1, ?, ?)",
+          crypto.randomUUID(),
+          id,
+          JSON.stringify(input.graph),
+          now,
+        );
+      } else if (!same && runs === 0) {
+        this.run("UPDATE workflow_versions SET graph_json = ? WHERE id = ?", JSON.stringify(input.graph), latest.id);
+      } else if (!same) {
+        this.run(
+          "INSERT INTO workflow_versions (id, workflow_id, version_number, graph_json, created_at) VALUES (?, ?, ?, ?, ?)",
+          crypto.randomUUID(),
+          id,
+          latest.version_number + 1,
+          JSON.stringify(input.graph),
+          now,
+        );
+      }
+    });
+    this.audit(input.actorId, "workflow.saved", "workflow", id, { versioned: !same && runs > 0 });
+    return this.workflow(id);
+  }
+
+  findUnusedTemplateWorkflow(workspaceId: string, templateId: string) {
+    const row = this.get<{ id: string }>(
+      `SELECT w.id FROM workflows w
+       LEFT JOIN workflow_runs r ON r.workflow_id = w.id
+       WHERE w.workspace_id = ? AND w.template_id = ?
+       GROUP BY w.id
+       HAVING COUNT(r.id) = 0
+       ORDER BY w.updated_at DESC LIMIT 1`,
+      workspaceId,
+      templateId,
+    );
+    return row ? this.workflow(row.id) : undefined;
+  }
+
+  countWorkflowsByNamePrefix(workspaceId: string, prefix: string): number {
+    const row = this.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM workflows WHERE workspace_id = ? AND name LIKE ?",
+      workspaceId,
+      `${prefix}%`,
+    );
+    return Number(row?.n ?? 0);
+  }
+
+  deleteWorkflow(id: string, workspaceId: string) {
+    return this.transaction(() => {
+      const wf = this.get<{ id: string }>("SELECT id FROM workflows WHERE id = ? AND workspace_id = ?", id, workspaceId);
+      if (!wf) return false;
+      this.run("DELETE FROM workflow_node_runs WHERE run_id IN (SELECT id FROM workflow_runs WHERE workflow_id = ?)", id);
+      this.run("DELETE FROM workflow_approvals WHERE run_id IN (SELECT id FROM workflow_runs WHERE workflow_id = ?)", id);
+      this.run("DELETE FROM workflow_runs WHERE workflow_id = ?", id);
+      this.run("DELETE FROM workflow_versions WHERE workflow_id = ?", id);
+      this.run("UPDATE missions SET workflow_id = NULL WHERE workflow_id = ?", id);
+      this.run("DELETE FROM workflows WHERE id = ?", id);
+      return true;
+    });
+  }
+
+  private latestWorkflowVersion(workflowId: string) {
+    return this.get<{ id: string; version_number: number; graph_json: string }>(
+      "SELECT id, version_number, graph_json FROM workflow_versions WHERE workflow_id = ? ORDER BY version_number DESC LIMIT 1",
+      workflowId,
+    );
+  }
+
+  createWorkflowRun(input: { workflowId: string; versionId: string; workspaceId: string; mode: "dry" | "live"; actorId: string }) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    this.run(
+      "INSERT INTO workflow_runs (id, workflow_id, version_id, workspace_id, status, mode, error, started_at, finished_at, created_at) VALUES (?, ?, ?, ?, 'QUEUED', ?, NULL, ?, NULL, ?)",
+      id,
+      input.workflowId,
+      input.versionId,
+      input.workspaceId,
+      input.mode,
+      now,
+      now,
+    );
+    this.audit(input.actorId, "workflow.run", "workflow_run", id, { mode: input.mode, workflowId: input.workflowId });
+    return this.workflowRun(id)!;
+  }
+
+  workflowRun(id: string) {
+    const row = this.get<{ id: string; workflow_id: string; version_id: string; workspace_id: string; status: string; mode: string; error: string | null; started_at: string | null; finished_at: string | null }>(
+      "SELECT id, workflow_id, version_id, workspace_id, status, mode, error, started_at, finished_at FROM workflow_runs WHERE id = ?",
+      id,
+    );
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      workflowId: row.workflow_id,
+      versionId: row.version_id,
+      workspaceId: row.workspace_id,
+      status: row.status,
+      mode: row.mode,
+      error: row.error,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      nodeRuns: this.workflowNodeRuns(id),
+      approvals: this.workflowApprovals(id),
+    };
+  }
+
+  latestWorkflowRun(workflowId: string) {
+    const row = this.get<{ id: string }>(
+      "SELECT id FROM workflow_runs WHERE workflow_id = ? ORDER BY created_at DESC LIMIT 1",
+      workflowId,
+    );
+    if (!row) return undefined;
+    return this.workflowRun(row.id);
+  }
+
+  updateWorkflowRun(id: string, status: string, error: string | null = null) {
+    const finished = ["COMPLETED", "FAILED", "CANCELLED", "PARTIAL", "WAITING"].includes(status);
+    this.run(
+      "UPDATE workflow_runs SET status = ?, error = ?, finished_at = ? WHERE id = ?",
+      status,
+      error,
+      finished ? new Date().toISOString() : null,
+      id,
+    );
+  }
+
+  replaceWorkflowNodeRuns(runId: string, runs: Array<{ nodeId: string; status: string; startedAt: string; finishedAt: string; output: unknown; error: string | null; retryCount: number }>) {
+    this.transaction(() => {
+      this.run("DELETE FROM workflow_node_runs WHERE run_id = ?", runId);
+      for (const run of runs) {
+        this.run(
+          "INSERT INTO workflow_node_runs (id, run_id, node_id, status, started_at, finished_at, input_json, output_json, error, retry_count) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+          crypto.randomUUID(),
+          runId,
+          run.nodeId,
+          run.status,
+          run.startedAt,
+          run.finishedAt,
+          JSON.stringify(run.output ?? null),
+          run.error,
+          run.retryCount,
+        );
+      }
+    });
+  }
+
+  workflowNodeRuns(runId: string) {
+    return this.all<{ node_id: string; status: string; started_at: string | null; finished_at: string | null; output_json: string | null; error: string | null; retry_count: number }>(
+      "SELECT node_id, status, started_at, finished_at, output_json, error, retry_count FROM workflow_node_runs WHERE run_id = ?",
+      runId,
+    ).map((row) => ({
+      nodeId: row.node_id,
+      status: row.status,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      output: row.output_json ? JSON.parse(row.output_json) : null,
+      error: row.error,
+      retryCount: row.retry_count,
+    }));
+  }
+
+  workflowApprovals(runId: string) {
+    return this.all<{ id: string; node_id: string; status: string; decided_at: string | null }>(
+      "SELECT id, node_id, status, decided_at FROM workflow_approvals WHERE run_id = ?",
+      runId,
+    ).map((row) => ({ id: row.id, nodeId: row.node_id, status: row.status, decidedAt: row.decided_at }));
+  }
+
+  ensureApproval(runId: string, nodeId: string) {
+    const existing = this.get<{ id: string }>("SELECT id FROM workflow_approvals WHERE run_id = ? AND node_id = ?", runId, nodeId);
+    if (existing) return existing.id;
+    const id = crypto.randomUUID();
+    this.run(
+      "INSERT INTO workflow_approvals (id, run_id, node_id, status, decided_by, decided_at, created_at) VALUES (?, ?, ?, 'PENDING', NULL, NULL, ?)",
+      id,
+      runId,
+      nodeId,
+      new Date().toISOString(),
+    );
+    return id;
+  }
+
+  decideApproval(id: string, status: "APPROVED" | "REJECTED", actorId: string) {
+    this.run(
+      "UPDATE workflow_approvals SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+      status,
+      actorId,
+      new Date().toISOString(),
+      id,
+    );
+    this.audit(actorId, "workflow.approval", "workflow_approval", id, { status });
+  }
+
+  listMissions(workspaceId: string) {
+    return this.all<{ id: string; title: string; objective: string; status: string; workflow_id: string | null; dataset_job_id: string | null; updated_at: string }>(
+      "SELECT id, title, objective, status, workflow_id, dataset_job_id, updated_at FROM missions WHERE workspace_id = ? ORDER BY updated_at DESC",
+      workspaceId,
+    ).map((row) => ({
+      id: row.id,
+      title: row.title,
+      objective: row.objective,
+      status: row.status,
+      workflowId: row.workflow_id,
+      datasetJobId: row.dataset_job_id,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  mission(id: string) {
+    const row = this.get<{ id: string; workspace_id: string; title: string; objective: string; plan_json: string; workflow_id: string | null; dataset_job_id: string | null; status: string; updated_at: string }>(
+      "SELECT id, workspace_id, title, objective, plan_json, workflow_id, dataset_job_id, status, updated_at FROM missions WHERE id = ?",
+      id,
+    );
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      title: row.title,
+      objective: row.objective,
+      plan: JSON.parse(row.plan_json),
+      workflowId: row.workflow_id,
+      datasetJobId: row.dataset_job_id,
+      status: row.status,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  createMission(input: { workspaceId: string; title: string; objective: string; plan: unknown; workflowId: string | null; datasetJobId: string | null; actorId: string }) {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    this.run(
+      "INSERT INTO missions (id, workspace_id, title, objective, plan_json, workflow_id, dataset_job_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'PLANNED', ?, ?)",
+      id,
+      input.workspaceId,
+      input.title,
+      input.objective,
+      JSON.stringify(input.plan),
+      input.workflowId,
+      input.datasetJobId,
+      now,
+      now,
+    );
+    this.audit(input.actorId, "mission.created", "mission", id, { title: input.title });
+    return this.mission(id)!;
+  }
+
+  connectorPowered(workspaceId: string, provider = "email") {
+    const row = this.get<{ n: number }>("SELECT COUNT(*) AS n FROM agent_connectors WHERE workspace_id = ? AND provider = ?", workspaceId, provider);
+    return Number(row?.n ?? 0) > 0;
+  }
+
+  saveConnectorKey(input: { workspaceId: string; provider: string; secret: string; actorId: string }) {
+    const now = new Date().toISOString();
+    if (!input.secret) {
+      this.run("DELETE FROM agent_connectors WHERE workspace_id = ? AND provider = ?", input.workspaceId, input.provider);
+    } else {
+      this.run(
+        `INSERT INTO agent_connectors (workspace_id, provider, secret, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(workspace_id, provider) DO UPDATE SET secret = excluded.secret, updated_at = excluded.updated_at`,
+        input.workspaceId,
+        input.provider,
+        input.secret,
+        now,
+      );
+    }
+    this.audit(input.actorId, "connector.powered", "workspace", input.workspaceId, { provider: input.provider, powered: Boolean(input.secret) });
+    return this.connectorPowered(input.workspaceId, input.provider);
+  }
+
+  workflowRunCounts(workspaceId: string) {
+    const rows = this.all<{ status: string; n: number }>(
+      "SELECT status, COUNT(*) AS n FROM workflow_runs WHERE workspace_id = ? GROUP BY status",
+      workspaceId,
+    );
+    return {
+      completed: rows.filter((row) => row.status === "COMPLETED").reduce((sum, row) => sum + Number(row.n), 0),
+      failed: rows.filter((row) => row.status === "FAILED" || row.status === "PARTIAL").reduce((sum, row) => sum + Number(row.n), 0),
+    };
   }
 }
 
@@ -1107,6 +1470,8 @@ interface RecordRow {
   alternates_json: string;
   sources_json: string;
   annotation_json: string;
+  contactability_json: string | null;
+  trust_json: string | null;
 }
 
 interface EvidenceRow {

@@ -1,11 +1,37 @@
-import { Archive, ChevronLeft, ChevronRight, Clock, LogOut, MoreHorizontal, Search, Star, User } from "lucide-react";
+import { Archive, ChevronLeft, ChevronRight, Clock, CreditCard, Folder, LogOut, Moon, MoreHorizontal, Search, Star, Sun, User } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEvents } from "../events";
 import { initials, logOut, useSession } from "../session";
 import { AskDiglett } from "./Diglett";
 
-export type SideView = "favourites" | "recent" | "archived" | "profile" | null;
+export type SideView = "favourites" | "recent" | "archived" | "profile" | "pricing" | "agents" | "flow" | "lens" | "mission" | "merger" | null;
+export type Appearance = "light" | "dark";
+
+const APPEARANCE_KEY = "dig-appearance";
+
+export function readAppearance(): Appearance {
+  const saved = localStorage.getItem(APPEARANCE_KEY);
+  if (saved === "dark" || saved === "light") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+export function applyAppearance(theme: Appearance) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(APPEARANCE_KEY, theme);
+  window.dispatchEvent(new Event("dig-appearance"));
+}
+
+export function useAppearance() {
+  const [theme, setTheme] = useState<Appearance>(readAppearance);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    const sync = () => setTheme(readAppearance());
+    window.addEventListener("dig-appearance", sync);
+    return () => window.removeEventListener("dig-appearance", sync);
+  }, [theme]);
+  return [theme, (next: Appearance) => applyAppearance(next)] as const;
+}
 
 export interface Crumb {
   label: string;
@@ -22,6 +48,7 @@ export function AppWindow(props: {
   children: ReactNode;
 }) {
   const navigate = useNavigate();
+  const [theme, setTheme] = useAppearance();
   const showSidebar = props.sidebar !== false;
   // React Router numbers in-app history entries; at 0 there is nothing in Dig to go back to.
   const historyIndex = (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -66,6 +93,26 @@ export function AppWindow(props: {
               />
             </label>
           )}
+          <div className="titlebar-appearance" role="group" aria-label="Color Theme">
+            <button
+              type="button"
+              aria-pressed={theme === "light"}
+              onClick={() => setTheme("light")}
+              title="Bright / Light Mode"
+            >
+              <Sun size={13} />
+              <span>Light</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={theme === "dark"}
+              onClick={() => setTheme("dark")}
+              title="Dark Mode"
+            >
+              <Moon size={13} />
+              <span>Dark</span>
+            </button>
+          </div>
           {showSidebar && <Avatar />}
         </div>
         <div className="window-body">
@@ -100,11 +147,23 @@ function Sidebar({ active }: { active: SideView }) {
           </Link>
         ))}
       </div>
+      <h6>Agents</h6>
+      <div className="side-group">
+        <Link to="/agents" className={`side-item${active === "agents" || active === "flow" || active === "lens" || active === "mission" || active === "merger" ? " active" : ""}`}>
+          <Folder size={16} />
+          Agents
+          <span className="count">4</span>
+        </Link>
+      </div>
       <h6>Account</h6>
       <div className="side-group">
         <Link to="/profile" className={`side-item${active === "profile" ? " active" : ""}`}>
           <User size={16} />
           Profile
+        </Link>
+        <Link to="/pricing" className={`side-item${active === "pricing" ? " active" : ""}`}>
+          <CreditCard size={16} />
+          Pricing
         </Link>
         <button className="side-item" onClick={() => void logOut().finally(() => navigate("/"))}>
           <LogOut size={16} />

@@ -1,6 +1,8 @@
 import { collectDemo, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
 import type { Response } from "express";
 import { collectLive } from "./collect-live.js";
+import { enrichCollected } from "./enrich.js";
+import { jevConflictProvider } from "./jev-client.js";
 import { emptyProgress, type Progress, type DigDb } from "./db.js";
 import { env } from "./env.js";
 
@@ -90,6 +92,23 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
     }
     // Keep the best-corroborated results when a run finds more than the cap.
     collected = [...collected].sort((a, b) => b.sources.length - a.sources.length).slice(0, env.resultCap);
+    try {
+      collected = await enrichCollected(collected, {
+        demo: job.demo,
+        now: now.toISOString(),
+        onStage: (stage, progress) => {
+          if (cancelled.has(jobId)) {
+            throw Object.assign(new Error("Collection cancelled."), { code: "CANCELLED" });
+          }
+          db.updateProgress(runId, jobId, stage, { ...progress, percent: stagePercent(stage) });
+          db.event(jobId, runId, null, stage, progress);
+          publish(db, jobId);
+        },
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === "CANCELLED") throw error;
+      // A contact lookup can fail. The grounded research rows still publish.
+    }
     const previous = runNumber > 1 ? db.latestRecords(jobId) : null;
     const result = await runPipeline(
       {
@@ -99,6 +118,7 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
         now,
         threshold: env.threshold,
         demo: job.demo,
+        jev: jevConflictProvider(job.demo),
       },
       async (stage, progress) => {
         if (cancelled.has(jobId)) {

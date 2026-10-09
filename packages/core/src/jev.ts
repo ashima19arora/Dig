@@ -19,7 +19,7 @@ export interface JevDecision {
 
 export interface JevProvider {
   id: string;
-  decide(input: JevInput): JevDecision;
+  decide(input: JevInput): JevDecision | Promise<JevDecision>;
 }
 
 function timeOf(evidence: EvidenceItem | null): number {

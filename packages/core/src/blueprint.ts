@@ -52,7 +52,9 @@ export function suggestJobName(blueprint: CollectionBlueprint): string {
   switch (blueprint.intent) {
     case "JUDGE_LOOKUP": {
       const field = trimSubject(subject, /\b(researchers?|experts?|people|persons?|judges?|mentors?|jury|members?|speakers?|professionals?|who|could|be)\b/gi);
-      return `${field ? `${titleCase(field)} ` : ""}Judges & Mentors${place}`;
+      const isSpeaker = /\b(speakers?|keynotes?|talks?)\b/i.test(blueprint.query);
+      const title = isSpeaker ? "Speakers & Mentors" : "Judges & Mentors";
+      return `${field ? `${titleCase(field)} ` : ""}${title}${place}`;
     }
     case "SPONSOR_LOOKUP": {
       const kind = /hackathon/i.test(blueprint.query) ? "Hackathon" : "Event";

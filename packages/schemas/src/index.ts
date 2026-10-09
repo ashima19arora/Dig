@@ -25,6 +25,9 @@ export const JOB_STATES = [
   "PLANNED",
   "QUEUED",
   "COLLECTING",
+  "ENRICHING",
+  "IDENTITY_RESOLUTION",
+  "TRUST_EVALUATION",
   "NORMALIZING",
   "VALIDATING",
   "DEDUPLICATING",
@@ -43,6 +46,9 @@ export type JobState = z.infer<typeof jobStateSchema>;
 export const ACTIVE_STATES: JobState[] = [
   "QUEUED",
   "COLLECTING",
+  "ENRICHING",
+  "IDENTITY_RESOLUTION",
+  "TRUST_EVALUATION",
   "NORMALIZING",
   "VALIDATING",
   "DEDUPLICATING",
@@ -84,7 +90,7 @@ export const scheduleSchema = z.object({
 export type Schedule = z.infer<typeof scheduleSchema>;
 
 export const createJobSchema = z.object({
-  query: z.string().trim().min(8).max(2000),
+  query: z.string().trim().min(4).max(2000),
   name: z.string().trim().min(1).max(180).optional(),
   blueprint: blueprintSchema.optional(),
 });
@@ -147,7 +153,7 @@ export const eventUpdateSchema = eventInputSchema.partial().extend({
 });
 
 export const previewBlueprintSchema = z.object({
-  query: z.string().trim().min(8).max(2000),
+  query: z.string().trim().min(4).max(2000),
   blueprint: blueprintSchema.optional(),
 });
 
@@ -221,6 +227,9 @@ export const FIELD_LABELS: Record<string, string> = {
   affiliation: "Affiliation",
   expertise: "Expertise",
   profile_url: "Profile",
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  contact_page: "Contact page",
 };
 
 export function fieldLabel(field: string): string {
@@ -238,7 +247,7 @@ export const INTENT_LABELS: Record<IntentId, string> = {
   MARKET_LOOKUP: "Market lookup",
   FUNDING_LOOKUP: "Funding lookup",
   VENDOR_LOOKUP: "Vendor lookup",
-  JUDGE_LOOKUP: "Judge lookup",
+  JUDGE_LOOKUP: "Judges, Mentors & Speakers",
 };
 
 export function stateLabel(state: JobState): string {
@@ -255,6 +264,12 @@ export function stateLabel(state: JobState): string {
       return "Validating";
     case "COLLECTING":
       return "Collecting";
+    case "ENRICHING":
+      return "Finding contact paths";
+    case "IDENTITY_RESOLUTION":
+      return "Matching identities";
+    case "TRUST_EVALUATION":
+      return "Scoring trust";
     case "RANKING":
       return "Ranking";
     case "ANNOTATING":

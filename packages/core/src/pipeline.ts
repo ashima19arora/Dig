@@ -3,6 +3,7 @@ import { fieldLabel, type CollectionBlueprint } from "@dig/schemas";
 import { dedupeRecords } from "./dedupe.js";
 import { diffDatasets } from "./diff.js";
 import { intentDefinition } from "./intents.js";
+import { acceptedFieldNames } from "./enrichment/index.js";
 import { applyThreshold, mockJevProvider, type JevProvider } from "./jev.js";
 import { comparisonKey, normalizeFields } from "./normalize.js";
 import { qualityScore, scoreRecord } from "./rank.js";
@@ -61,6 +62,8 @@ interface Draft {
   confidenceComponents: PublishedRecord["confidenceComponents"];
   status: PublishedRecord["status"];
   alternates: PublishedRecord["alternates"];
+  contactability?: PublishedRecord["contactability"];
+  trust?: PublishedRecord["trust"];
 }
 
 export interface StageProgress {
@@ -152,6 +155,8 @@ export async function runPipeline(
       confidenceComponents: scores.confidenceParts,
       status,
       alternates: [],
+      contactability: record.contactability,
+      trust: record.trust,
     };
   });
 
@@ -185,7 +190,7 @@ export async function runPipeline(
   const diff = diffDatasets({
     previous: previous?.map(keyed) ?? null,
     current: drafts.map(keyed),
-    compareFields: input.blueprint.fields.filter((field) => !UNCOMPARED_FIELDS.has(field)),
+    compareFields: [...new Set([...input.blueprint.fields, ...acceptedFieldNames()])].filter((field) => !UNCOMPARED_FIELDS.has(field)),
   });
   // Hand the original values back to everything downstream (conflicts, Jev, the diff panel).
   {
@@ -218,7 +223,7 @@ export async function runPipeline(
         if (!fieldDiff.from || !fieldDiff.to) continue;
         const oldEvidence = prior.evidence.find((item) => item.fieldName === fieldDiff.field && item.value === fieldDiff.from) ?? prior.evidence.find((item) => item.fieldName === fieldDiff.field) ?? null;
         const newEvidence = current.evidence.find((item) => item.fieldName === fieldDiff.field && item.value === fieldDiff.to) ?? current.evidence.find((item) => item.fieldName === fieldDiff.field) ?? null;
-        const decision = jev.decide({
+        const decision = await jev.decide({
           field: fieldDiff.field,
           oldValue: fieldDiff.from,
           newValue: fieldDiff.to,
@@ -242,6 +247,7 @@ export async function runPipeline(
           confidence: decision.confidence,
           reason: decision.reason,
           ambiguous: current.ambiguousFields.includes(fieldDiff.field),
+          provider: decision.provider,
         };
         conflicts.push(conflict);
         change.conflictIds.push(conflict.id);
@@ -296,6 +302,8 @@ export async function runPipeline(
       sources: draft.sources,
       evidence: draft.evidence,
       annotation,
+      contactability: draft.contactability,
+      trust: draft.trust,
     };
   });
 

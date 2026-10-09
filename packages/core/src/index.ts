@@ -1,9 +1,12 @@
+export * from "./agents/index.js";
 export * from "./blueprint.js";
+export * from "./enrichment/index.js";
 export * from "./dedupe.js";
 export * from "./demo-data.js";
 export * from "./diff.js";
 export * from "./intents.js";
 export * from "./jev.js";
+export * from "./jev-api.js";
 export * from "./normalize.js";
 export * from "./pipeline.js";
 export * from "./rank.js";
@@ -19,6 +22,12 @@ export function stagePercent(stage: string): number {
       return 6;
     case "COLLECTING":
       return 28;
+    case "ENRICHING":
+      return 34;
+    case "IDENTITY_RESOLUTION":
+      return 38;
+    case "TRUST_EVALUATION":
+      return 42;
     case "NORMALIZING":
       return 46;
     case "DEDUPLICATING":

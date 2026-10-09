@@ -113,6 +113,23 @@ export async function download(path: string, fallbackName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Datasets the signed-in user can attach to a workflow, newest finished search first. */
+export function datasetChoices(jobs: JobSummary[]) {
+  const counts = new Map<string, number>();
+  for (const job of jobs) counts.set(job.name, (counts.get(job.name) ?? 0) + 1);
+  return [...jobs]
+    .sort((a, b) => {
+      const ready = Number(b.versionNumber != null) - Number(a.versionNumber != null);
+      if (ready !== 0) return ready;
+      return (b.lastRunAt ?? b.updatedAt).localeCompare(a.lastRunAt ?? a.updatedAt);
+    })
+    .map((job) => {
+      const rows = job.versionNumber == null ? "no results yet" : `${job.rowCount} records`;
+      const query = (counts.get(job.name) ?? 0) > 1 && job.query ? ` · ${job.query.slice(0, 48)}` : "";
+      return { id: job.id, name: job.name, label: `${job.name} · ${rows}${query}` };
+    });
+}
+
 export function ago(iso: string | null | undefined) {
   if (!iso) return "Not run";
   const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
@@ -154,6 +171,43 @@ export interface Evidence {
 
 export type RecordStatus = "verified" | "needs_review" | "possible_duplicate" | "incomplete";
 
+export type ContactChannelStatus = "VERIFIED" | "IDENTITY_MATCHED" | "PROVIDER_MATCHED" | "LIKELY" | "NEEDS_REVIEW" | "NOT_FOUND";
+
+export interface ContactChannel {
+  value: string | null;
+  status: ContactChannelStatus;
+  confidence: number;
+  provider: string | null;
+  sourceUrl: string | null;
+  verificationStatus: string | null;
+  matchingEvidence: string | null;
+  sourceType?: "official" | "secondary" | "press" | "provider_enrichment";
+}
+
+export interface Contactability {
+  score: number;
+  status: "NONE" | "PARTIAL" | "READY";
+  channels: {
+    email: ContactChannel;
+    phone: ContactChannel;
+    linkedin: ContactChannel;
+    github: ContactChannel;
+    website: ContactChannel;
+    contactPage: ContactChannel;
+  };
+}
+
+export interface TrustDecision {
+  identityConfidence: number;
+  evidenceConfidence: number;
+  contactConfidence: number;
+  overallTrust: number;
+  needsReviewProbability: number;
+  status: "HIGH_TRUST" | "MEDIUM_TRUST" | "NEEDS_REVIEW" | "UNTRUSTED";
+  provider: string;
+  model: string;
+}
+
 export interface DatasetRecord {
   id: string;
   canonicalEntityId: string;
@@ -167,6 +221,8 @@ export interface DatasetRecord {
   evidence: Evidence[];
   label: string;
   change: "initial" | "added" | "changed" | "conflict" | "unchanged";
+  contactability?: Contactability;
+  trust?: TrustDecision;
 }
 
 export interface DatasetVersion {
@@ -237,4 +293,4 @@ export interface JobDetail {
   progress: JobProgress;
 }
 
-export const ACTIVE_STATES = ["QUEUED", "COLLECTING", "NORMALIZING", "VALIDATING", "DEDUPLICATING", "RANKING", "ANNOTATING"];
+export const ACTIVE_STATES = ["QUEUED", "COLLECTING", "ENRICHING", "IDENTITY_RESOLUTION", "TRUST_EVALUATION", "NORMALIZING", "VALIDATING", "DEDUPLICATING", "RANKING", "ANNOTATING"];

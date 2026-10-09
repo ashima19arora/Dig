@@ -17,8 +17,8 @@ export interface ParsedQuery {
 
 const SYSTEM = `You route research questions for Dig, a tool that finds real, sourced records on the web.
 Pick exactly one intent:
-- SPONSOR_LOOKUP: companies that sponsor or partner with events/hackathons ("who sponsors hackathons in India").
-- JUDGE_LOOKUP: people to judge, mentor or speak at an event: experts, researchers, jury ("AI researchers who could judge our hackathon").
+- SPONSOR_LOOKUP: companies that sponsor or partner with events/hackathons ("who sponsors hackathons in India", "sponsor search", "start a sponsor search").
+- JUDGE_LOOKUP: people to judge, mentor or speak at an event: experts, researchers, jury, keynote or guest speakers ("AI researchers who could judge our hackathon", "speakers for tech summit", "speaker search", "start a speaker search").
 - JOB_LOOKUP: open jobs, internships or roles to apply for ("frontend internships in Bangalore").
 - LEAD_LOOKUP: companies to sell to or reach out to, with contacts ("D2C skincare brands in Mumbai to pitch our analytics tool").
 - COMPETITOR_LOOKUP: competitors or alternatives to a product/company ("competitors of Notion").

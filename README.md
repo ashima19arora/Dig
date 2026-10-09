@@ -13,12 +13,13 @@
 
 Sponsors, judges, speakers — found, sourced, and organized into one space, so your whole team can focus on running the event instead of manually hunting for contacts.
 
-**[▶ Watch the demo](https://youtu.be/wxyIEdSFLwU)** · **[Try it live](https://dig-ai.vercel.app/)**
+**[▶ Watch the demo](https://youtu.be/wxyIEdSFLwU)** · **[Try it live](https://dig-ai.vercel.app/)** · **[✨ Complete Feature Guide (Features.md)](Features.md)**
 
 </div>
 
 ## Table of contents
 
+- [Full Feature Guide (Features.md)](Features.md)
 - [The problem](#the-problem)
 - [What you get](#what-you-get)
 - [How it works](#how-it-works)
