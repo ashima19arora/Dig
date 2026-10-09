@@ -918,16 +918,22 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                               const linkedinQuery = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
                               return (
                                 <td key={key}>
-                                  <a
-                                    href={linkedinQuery}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="linkedin-finder-link"
-                                    onClick={(e) => e.stopPropagation()}
-                                    title={`Find partnership contacts for ${companyName} on LinkedIn`}
-                                  >
-                                    Find on LinkedIn <ExternalLink size={10} />
-                                  </a>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <span style={{ color: "var(--text-3)", fontSize: 12 }} title="No verified email on source page">
+                                      —
+                                    </span>
+                                    <a
+                                      href={linkedinQuery}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="linkedin-finder-link"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title={`No direct email listed. Search ${companyName} contacts on LinkedIn`}
+                                    >
+                                      <span>Search LinkedIn</span>
+                                      <ExternalLink size={10} />
+                                    </a>
+                                  </div>
                                 </td>
                               );
                             }
@@ -1622,8 +1628,16 @@ function ContactPaths({ record }: { record: DatasetRecord }) {
       <div className="paths">
         {PATHS.map(([label, key]) => {
           const item = book.channels[key];
-          const found = Boolean(item.value) && item.status !== "NOT_FOUND";
-          const href = found && item.value && /^https?:\/\//i.test(item.value) ? item.value : null;
+          const directLinkedin =
+            key === "linkedin"
+              ? record.fields.linkedin || (record.fields.profile_url?.includes("linkedin.com") ? record.fields.profile_url : null)
+              : null;
+          const effectiveValue = item.value || directLinkedin;
+          const found = Boolean(effectiveValue) && (item.status !== "NOT_FOUND" || Boolean(directLinkedin));
+          const href = found && effectiveValue && /^https?:\/\//i.test(effectiveValue) ? effectiveValue : null;
+          const companyName = record.fields.company_name || record.label || "";
+          const linkedinSearchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
+
           return (
             <div key={key} className="path">
               <span className={found ? "ok" : "miss"}>{found ? "✓" : "—"}</span>
@@ -1634,14 +1648,30 @@ function ContactPaths({ record }: { record: DatasetRecord }) {
                     {href.replace(/^https?:\/\/(www\.)?/, "")}
                   </a>
                 ) : found ? (
-                  item.value
+                  effectiveValue
+                ) : key === "linkedin" ? (
+                  <>
+                    <span style={{ color: "var(--text-3)" }}>Not found</span>
+                    <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>
+                    <a
+                      href={linkedinSearchUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="linkedin-finder-link"
+                      style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3, verticalAlign: "middle" }}
+                      title={`Search LinkedIn for ${companyName} partnership contacts`}
+                    >
+                      <span>Search LinkedIn</span>
+                      <ExternalLink size={10} />
+                    </a>
+                  </>
                 ) : (
                   "Not found"
                 )}
                 <span className="meta">
-                  {PATH_STATUS[item.status] ?? item.status}
-                  {found ? ` · ${Math.round(item.confidence * 100)}%` : ""}
-                  {item.provider && item.provider !== "research" ? ` · ${item.provider}` : ""}
+                  {key === "linkedin" && !found
+                    ? "No direct profile · 1-click search fallback"
+                    : `${PATH_STATUS[item.status] ?? item.status}${found ? ` · ${Math.round(item.confidence * 100)}%` : ""}${item.provider && item.provider !== "research" ? ` · ${item.provider}` : ""}`}
                 </span>
               </span>
             </div>
