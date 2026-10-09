@@ -660,7 +660,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             <span>
               <b>{version.rowCount}</b> records from <b>{version.sourceCount}</b> sources
             </span>
-            <OutreachSummary records={records} outreach={outreach} />
             {version.qualityScore !== null && (
               <span>
                 <b>{Math.round(version.qualityScore)}</b> quality score
