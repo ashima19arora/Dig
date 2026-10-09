@@ -2845,11 +2845,11 @@ function DispatchConfirmModal({
         <div className="flow-modal-head">
           <div>
             <h3>
-              <Send size={18} color="#4c6fff" />
-              Authorize &amp; Confirm Multi-Channel Dispatch
+              <Send size={16} color="#4c6fff" />
+              <span>Confirm Multi-Channel Dispatch</span>
             </h3>
             <p>
-              Automated outreach pipeline for &ldquo;{datasetName || "Selected Dataset"}&rdquo; &bull; Review senders, gateways, and live message previews before dispatching.
+              Automated outreach for &ldquo;{datasetName || "Selected Dataset"}&rdquo; &bull; {emailRecordsCount + whatsappRecordsCount + linkedinRecordsCount} leads across 3 channels.
             </p>
           </div>
           <button className="flow-modal-close" type="button" onClick={onClose} aria-label="Close modal">
@@ -2858,197 +2858,83 @@ function DispatchConfirmModal({
         </div>
 
         <div className="flow-modal-body">
-          {/* Spacious & Rich Channel Selector Cards */}
-          <div className="dispatch-channels-grid">
-            <div
-              className={`dispatch-channel-card email ${activeTab === "email" ? "active" : ""}`}
+          {/* Streamlined, Minimalist Channel Navigation */}
+          <div className="dispatch-nav-tabs">
+            <button
+              type="button"
+              className={`dispatch-nav-tab ${activeTab === "email" ? "active" : ""}`}
               onClick={() => setActiveTab("email")}
-              role="button"
-              tabIndex={0}
-              title="Click to view & edit Email pitch and sender"
             >
-              <div className="dispatch-channel-top">
-                <span className="dispatch-channel-name">
-                  <Mail size={15} color="#007acc" /> Email Channel
-                </span>
-                <span className="dispatch-channel-count">{emailRecordsCount} Leads</span>
-              </div>
-              <div className="dispatch-channel-sub">
-                <span className="dispatch-channel-from" title={`From: ${emailFrom} (${emailSender})`}>
-                  <b>{emailFrom}</b> ({emailSender})
-                </span>
-                <span className={`dispatch-channel-gateway ${gateways.email.mode !== "system" ? "custom" : ""}`}>
-                  <CheckCircle2 size={11} color={gateways.email.mode !== "system" ? "#16a34a" : "#248a3d"} />
-                  {gateways.email.mode === "google_oauth"
-                    ? "⚡ Google OAuth 2.0"
-                    : gateways.email.mode === "smtp"
-                    ? "⚡ Custom SMTP"
-                    : gateways.email.mode === "resend"
-                    ? "⚡ Personal Resend"
-                    : "Resend API"}
-                </span>
-              </div>
-              <div className="dispatch-channel-status-bar">
-                {activeTab === "email" ? (
-                  <span className="channel-active-indicator">● Active in Editor</span>
-                ) : (
-                  <span className="channel-switch-hint">Click to edit pitch &rarr;</span>
-                )}
-              </div>
-            </div>
-
-            <div
-              className={`dispatch-channel-card whatsapp ${activeTab === "whatsapp" ? "active" : ""}`}
+              <Mail size={13} />
+              <span>Email</span>
+              <span className="dispatch-tab-badge">{emailRecordsCount} leads</span>
+            </button>
+            <button
+              type="button"
+              className={`dispatch-nav-tab ${activeTab === "whatsapp" ? "active" : ""}`}
               onClick={() => setActiveTab("whatsapp")}
-              role="button"
-              tabIndex={0}
-              title="Click to view & edit WhatsApp message and number"
             >
-              <div className="dispatch-channel-top">
-                <span className="dispatch-channel-name">
-                  <Phone size={15} color="#25d366" /> WhatsApp Channel
-                </span>
-                <span className="dispatch-channel-count">{whatsappRecordsCount} Leads</span>
-              </div>
-              <div className="dispatch-channel-sub">
-                <span className="dispatch-channel-from" title={`From: ${whatsappFrom} (${whatsappSender})`}>
-                  <b>{whatsappFrom}</b> ({whatsappSender})
-                </span>
-                <span className={`dispatch-channel-gateway ${gateways.whatsapp.mode !== "system" ? "custom" : ""}`}>
-                  <CheckCircle2 size={11} color={gateways.whatsapp.mode !== "system" ? "#16a34a" : "#248a3d"} />
-                  {gateways.whatsapp.mode === "twilio"
-                    ? "⚡ Twilio WhatsApp"
-                    : gateways.whatsapp.mode === "meta"
-                    ? "⚡ Meta Cloud BYOK"
-                    : "Meta Cloud v21"}
-                </span>
-              </div>
-              <div className="dispatch-channel-status-bar">
-                {activeTab === "whatsapp" ? (
-                  <span className="channel-active-indicator">● Active in Editor</span>
-                ) : (
-                  <span className="channel-switch-hint">Click to edit message &rarr;</span>
-                )}
-              </div>
-            </div>
-
-            <div
-              className={`dispatch-channel-card linkedin ${activeTab === "linkedin" ? "active" : ""}`}
+              <Phone size={13} />
+              <span>WhatsApp</span>
+              <span className="dispatch-tab-badge">{whatsappRecordsCount} leads</span>
+            </button>
+            <button
+              type="button"
+              className={`dispatch-nav-tab ${activeTab === "linkedin" ? "active" : ""}`}
               onClick={() => setActiveTab("linkedin")}
-              role="button"
-              tabIndex={0}
-              title="Click to view & edit LinkedIn note and profile"
             >
-              <div className="dispatch-channel-top">
-                <span className="dispatch-channel-name">
-                  <MessageCircle size={15} color="#0a66c2" /> LinkedIn Channel
-                </span>
-                <span className="dispatch-channel-count">{linkedinRecordsCount} Leads</span>
-              </div>
-              <div className="dispatch-channel-sub">
-                <span className="dispatch-channel-from" title={`From: ${linkedinFrom} (${linkedinSender})`}>
-                  <b>{linkedinFrom}</b> ({linkedinSender})
-                </span>
-                <span className={`dispatch-channel-gateway ${gateways.linkedin.mode !== "system" ? "custom" : ""}`}>
-                  <CheckCircle2 size={11} color={gateways.linkedin.mode !== "system" ? "#16a34a" : "#248a3d"} />
-                  {gateways.linkedin.mode === "profile"
-                    ? "⚡ Personal Profile"
-                    : gateways.linkedin.mode === "partner"
-                    ? "⚡ Partner OAuth"
-                    : "Partner API"}
-                </span>
-              </div>
-              <div className="dispatch-channel-status-bar">
-                {activeTab === "linkedin" ? (
-                  <span className="channel-active-indicator">● Active in Editor</span>
-                ) : (
-                  <span className="channel-switch-hint">Click to edit note &rarr;</span>
-                )}
-              </div>
-            </div>
+              <MessageCircle size={13} />
+              <span>LinkedIn</span>
+              <span className="dispatch-tab-badge">{linkedinRecordsCount} leads</span>
+            </button>
+            <button
+              type="button"
+              className={`dispatch-nav-tab ${activeTab === "gateways" ? "active" : ""}`}
+              onClick={() => setActiveTab("gateways")}
+            >
+              <KeyRound size={13} />
+              <span>API Gateways</span>
+              {(gateways.email.mode !== "system" || gateways.whatsapp.mode !== "system" || gateways.linkedin.mode !== "system") && (
+                <span className="dispatch-tab-badge personal">Personal</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`dispatch-nav-tab ${activeTab === "all" ? "active" : ""}`}
+              onClick={() => setActiveTab("all")}
+              style={{ marginLeft: "auto" }}
+            >
+              <Layers size={13} />
+              <span>Review All 3</span>
+            </button>
           </div>
 
           {/* Interactive Message, Sender & Gateway Editor */}
           <div className="dispatch-preview-container">
-            <div className="dispatch-preview-tabs">
-              <button
-                type="button"
-                className={`dispatch-preview-tab ${activeTab === "email" ? "active" : ""}`}
-                onClick={() => setActiveTab("email")}
-              >
-                <Mail size={13} /> Email Pitch &amp; Sender
-              </button>
-              <button
-                type="button"
-                className={`dispatch-preview-tab ${activeTab === "whatsapp" ? "active" : ""}`}
-                onClick={() => setActiveTab("whatsapp")}
-              >
-                <Phone size={13} /> WhatsApp Message &amp; Number
-              </button>
-              <button
-                type="button"
-                className={`dispatch-preview-tab ${activeTab === "linkedin" ? "active" : ""}`}
-                onClick={() => setActiveTab("linkedin")}
-              >
-                <MessageCircle size={13} /> LinkedIn Note &amp; Profile
-              </button>
-              <button
-                type="button"
-                className={`dispatch-preview-tab ${activeTab === "gateways" ? "active" : ""}`}
-                onClick={() => setActiveTab("gateways")}
-                style={{ position: "relative" }}
-              >
-                <KeyRound size={13} /> 🔑 Personal API Keys &amp; Gateways
-                {(gateways.email.mode !== "system" || gateways.whatsapp.mode !== "system" || gateways.linkedin.mode !== "system") && (
-                  <span style={{ fontSize: "9.5px", background: "#248a3d", color: "#fff", padding: "1px 6px", borderRadius: "10px", fontWeight: 700, marginLeft: "4px" }}>
-                    Personal
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                className={`dispatch-preview-tab ${activeTab === "all" ? "active" : ""}`}
-                onClick={() => setActiveTab("all")}
-                style={{ marginLeft: "auto" }}
-              >
-                <Layers size={13} /> Review All 3 Messages
-              </button>
-            </div>
-
             <div className="dispatch-preview-content">
               {/* EMAIL CHANNEL VIEW */}
               {activeTab === "email" && (
                 <>
-                  <div className="gateway-settings-banner">
-                    <div className="gateway-settings-banner-info">
-                      <KeyRound size={14} color="#4c6fff" />
-                      <span>
-                        Sender Gateway: <b>{effectiveEmailProvider}</b>
-                        {gateways.email.mode !== "system" ? " (Authentic Personal Sender)" : " (Dig Managed Endpoint)"}
-                      </span>
+                  <div className="dispatch-meta-strip">
+                    <div className="dispatch-meta-lead">
+                      <span className="dispatch-meta-tag">Sample Lead:</span>
+                      <b className="dispatch-lead-name">{sampleName}</b>
+                      <span className="dispatch-lead-company">@{sampleCompany}</span>
+                      <span className="dispatch-lead-detail">({sampleEmail})</span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        setGatewaySubTab("email");
-                        setActiveTab("gateways");
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                    >
-                      <Sliders size={12} /> Configure Google OAuth / Personal API &rarr;
-                    </button>
-                  </div>
-
-                  <div className="preview-field-banner">
-                    <div className="preview-field-banner-lead">
-                      <span className="lead-pill-label">Sample Recipient:</span>
-                      <b className="lead-pill-name">{sampleName}</b>
-                      <span className="lead-pill-company">@ {sampleCompany}</span>
-                      <span className="lead-pill-detail">({sampleEmail})</span>
-                    </div>
-                    <div className="preview-field-banner-gateway">
-                      <span>Gateway Mode: <b>{gateways.email.mode.toUpperCase()}</b></span>
+                    <div className="dispatch-meta-gateway">
+                      <span className="dispatch-meta-tag">Gateway:</span>
+                      <span className="dispatch-gateway-badge">{effectiveEmailProvider}</span>
+                      <button
+                        type="button"
+                        className="dispatch-cfg-link"
+                        onClick={() => {
+                          setGatewaySubTab("email");
+                          setActiveTab("gateways");
+                        }}
+                      >
+                        <Sliders size={11} /> Configure Gateway &rarr;
+                      </button>
                     </div>
                   </div>
 
@@ -3131,36 +3017,26 @@ function DispatchConfirmModal({
               {/* WHATSAPP CHANNEL VIEW */}
               {activeTab === "whatsapp" && (
                 <>
-                  <div className="gateway-settings-banner">
-                    <div className="gateway-settings-banner-info">
-                      <KeyRound size={14} color="#25d366" />
-                      <span>
-                        Sender Gateway: <b>{effectiveWhatsappProvider}</b>
-                        {gateways.whatsapp.mode !== "system" ? " (Authentic Personal Number)" : " (Dig Managed Endpoint)"}
-                      </span>
+                  <div className="dispatch-meta-strip">
+                    <div className="dispatch-meta-lead">
+                      <span className="dispatch-meta-tag">Sample Lead:</span>
+                      <b className="dispatch-lead-name">{sampleName}</b>
+                      <span className="dispatch-lead-company">@{sampleCompany}</span>
+                      <span className="dispatch-lead-detail">({samplePhone})</span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        setGatewaySubTab("whatsapp");
-                        setActiveTab("gateways");
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                    >
-                      <Sliders size={12} /> Configure Twilio API / WhatsApp &rarr;
-                    </button>
-                  </div>
-
-                  <div className="preview-field-banner">
-                    <div className="preview-field-banner-lead">
-                      <span className="lead-pill-label">Sample Recipient:</span>
-                      <b className="lead-pill-name">{sampleName}</b>
-                      <span className="lead-pill-company">@ {sampleCompany}</span>
-                      <span className="lead-pill-detail">({samplePhone})</span>
-                    </div>
-                    <div className="preview-field-banner-gateway">
-                      <span>Gateway Mode: <b>{gateways.whatsapp.mode.toUpperCase()}</b></span>
+                    <div className="dispatch-meta-gateway">
+                      <span className="dispatch-meta-tag">Gateway:</span>
+                      <span className="dispatch-gateway-badge">{effectiveWhatsappProvider}</span>
+                      <button
+                        type="button"
+                        className="dispatch-cfg-link"
+                        onClick={() => {
+                          setGatewaySubTab("whatsapp");
+                          setActiveTab("gateways");
+                        }}
+                      >
+                        <Sliders size={11} /> Configure Gateway &rarr;
+                      </button>
                     </div>
                   </div>
 
@@ -3234,36 +3110,26 @@ function DispatchConfirmModal({
               {/* LINKEDIN CHANNEL VIEW */}
               {activeTab === "linkedin" && (
                 <>
-                  <div className="gateway-settings-banner">
-                    <div className="gateway-settings-banner-info">
-                      <KeyRound size={14} color="#0a66c2" />
-                      <span>
-                        Sender Profile: <b>{effectiveLinkedinProvider}</b>
-                        {gateways.linkedin.mode === "profile" ? " (Authentic Personal LinkedIn Profile)" : " (Dig Agent)"}
-                      </span>
+                  <div className="dispatch-meta-strip">
+                    <div className="dispatch-meta-lead">
+                      <span className="dispatch-meta-tag">Sample Lead:</span>
+                      <b className="dispatch-lead-name">{sampleName}</b>
+                      <span className="dispatch-lead-company">@{sampleCompany}</span>
+                      <span className="dispatch-lead-detail">({sampleRole || "Lead"})</span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => {
-                        setGatewaySubTab("linkedin");
-                        setActiveTab("gateways");
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                    >
-                      <Sliders size={12} /> Configure Personal LinkedIn Profile &rarr;
-                    </button>
-                  </div>
-
-                  <div className="preview-field-banner">
-                    <div className="preview-field-banner-lead">
-                      <span className="lead-pill-label">Sample Lead:</span>
-                      <b className="lead-pill-name">{sampleName}</b>
-                      <span className="lead-pill-company">@ {sampleCompany}</span>
-                      <span className="lead-pill-detail">({sampleRole})</span>
-                    </div>
-                    <div className="preview-field-banner-gateway">
-                      <span>Gateway Mode: <b>{gateways.linkedin.mode.toUpperCase()}</b></span>
+                    <div className="dispatch-meta-gateway">
+                      <span className="dispatch-meta-tag">Gateway:</span>
+                      <span className="dispatch-gateway-badge">{effectiveLinkedinProvider}</span>
+                      <button
+                        type="button"
+                        className="dispatch-cfg-link"
+                        onClick={() => {
+                          setGatewaySubTab("linkedin");
+                          setActiveTab("gateways");
+                        }}
+                      >
+                        <Sliders size={11} /> Configure Gateway &rarr;
+                      </button>
                     </div>
                   </div>
 
@@ -4029,19 +3895,20 @@ function DispatchConfirmModal({
                 </div>
               )}
 
-              <div className="dispatch-editor-actions">
-                <button type="button" className="btn small" onClick={resetToDefaults} title="Revert to original template">
-                  <RotateCcw size={12} /> Reset to Defaults
-                </button>
-                <span className="dispatch-sync-notice">
-                  ✓ Custom gateways &amp; sender identities are synchronized to graph nodes and delivery receipts
-                </span>
-              </div>
             </div>
           </div>
         </div>
 
         <div className="flow-modal-footer">
+          <button
+            type="button"
+            className="btn ghost small"
+            onClick={resetToDefaults}
+            title="Revert message templates to originals"
+            style={{ marginRight: "auto", display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <RotateCcw size={12} /> Reset to Defaults
+          </button>
           <button className="btn" type="button" onClick={onClose} disabled={isPending || isRunning}>
             Cancel
           </button>
