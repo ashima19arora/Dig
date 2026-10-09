@@ -23,7 +23,15 @@ export function EventFolder() {
 
   if (loading) return <AppWindow crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }]} sidebar={null}><div className="empty">Loading…</div></AppWindow>;
   if (!event) return <Navigate to="/dashboard" replace />;
-  const folders = FOLDERS.filter((folder) => folderLabel(event, folder.key).toLowerCase().includes(filter.trim().toLowerCase()));
+  const folders = FOLDERS.filter((folder) => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      folderLabel(event, folder.key).toLowerCase().includes(q) ||
+      folder.noun.toLowerCase().includes(q) ||
+      folder.aliases.some((a) => a.includes(q))
+    );
+  });
 
   return (
     <AppWindow
@@ -32,7 +40,7 @@ export function EventFolder() {
       actions={
         <>
           <button className="btn amber" onClick={() => setAsking(true)}>
-            <Plus size={15} strokeWidth={2.4} /> New Query
+            <Plus size={15} strokeWidth={2.4} /> Got Something Else?
           </button>
           <button className="btn" onClick={() => setEditing(true)}>
             <Pencil size={13} /> Edit README
@@ -73,7 +81,7 @@ export function EventFolder() {
           ))}
           <button className="folder new" onClick={() => setAsking(true)}>
             <NewFolderIcon />
-            <span className="name">New Query</span>
+            <span className="name">Got Something Else?</span>
           </button>
         </div>
       </div>
@@ -134,7 +142,7 @@ export function NewQuerySheet({ event, onClose, initialQuery }: { event: DigEven
   const trimmed = query.trim();
 
   useEffect(() => {
-    if (trimmed.length < 8) return;
+    if (trimmed.length < 4) return;
     let stale = false;
     setChecking(true);
     const timer = window.setTimeout(() => {
@@ -155,7 +163,7 @@ export function NewQuerySheet({ event, onClose, initialQuery }: { event: DigEven
 
   const submit = async (form: FormEvent) => {
     form.preventDefault();
-    if (unsupported || trimmed.length < 8) return;
+    if (unsupported || trimmed.length < 4) return;
     setBusy(true);
     setError(null);
     try {
@@ -175,28 +183,47 @@ export function NewQuerySheet({ event, onClose, initialQuery }: { event: DigEven
   return (
     <div className="scrim" onClick={onClose}>
       <form className="sheet" onSubmit={submit} onClick={(click) => click.stopPropagation()}>
-        <h3>New query</h3>
+        <h3>Got Something Else?</h3>
         <p className="hint">
           Ask in your own words. Dig works out what you’re looking for, searches the live web, keeps only facts it can quote from a
           source page, and files the results under this event.
         </p>
         <label>What should Dig find?</label>
-        <textarea rows={3} value={query} onChange={(change) => setQuery(change.target.value)} placeholder={FOLDERS[0]!.example} autoFocus />
+        <textarea
+          rows={3}
+          value={query}
+          onChange={(change) => setQuery(change.target.value)}
+          placeholder="e.g. Find sponsors for hackathons in India, or keynote speakers, or developer APIs offering credits..."
+          autoFocus
+        />
         <div className="examples">
           {FOLDERS.map((folder) => (
             <button type="button" key={folder.key} onClick={() => setQuery(folder.example)}>
               {folder.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setQuery("Keynote speakers and tech experts for our hackathon in India")}
+          >
+            Speakers
+          </button>
+          <button
+            type="button"
+            style={{ borderColor: "rgba(76, 111, 255, 0.4)", color: "#4c6fff", fontWeight: 600 }}
+            onClick={() => setQuery("Developer tool APIs and cloud platforms offering student credits and perks")}
+          >
+            ✨ Got something else?
+          </button>
         </div>
-        {trimmed.length >= 8 && (
+        {trimmed.length >= 4 && (
           <div className={`notice${current && !unsupported ? " ok" : ""}`} role="status">
             {!current ? (
               checking ? "Reading your question…" : "Keep typing…"
             ) : unsupported ? (
               <>
-                <b>That search isn’t supported yet.</b> It reads as a {current.label.toLowerCase()}. Dig can research sponsors, judges &
-                mentors, jobs, leads and competitors right now.
+                <b>That search isn’t supported yet.</b> It reads as a {current.label.toLowerCase()}. Dig can research sponsors, judges,
+                mentors & speakers, jobs, leads and competitors right now.
               </>
             ) : (
               <>
@@ -214,7 +241,7 @@ export function NewQuerySheet({ event, onClose, initialQuery }: { event: DigEven
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn blue" disabled={busy || Boolean(unsupported) || trimmed.length < 8}>
+          <button type="submit" className="btn blue" disabled={busy || Boolean(unsupported) || trimmed.length < 4}>
             {busy ? "Starting…" : "Start digging"}
           </button>
         </div>

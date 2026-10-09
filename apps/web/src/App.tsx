@@ -8,6 +8,12 @@ import { EventFolder } from "./pages/EventFolder";
 import { FolderBoard } from "./pages/FolderBoard";
 import { JobBoard } from "./pages/JobBoard";
 import { Landing } from "./pages/Landing";
+import { AgentsHome } from "./pages/Agents";
+import { Flow } from "./pages/Flow";
+import { Lens } from "./pages/Lens";
+import { Merger } from "./pages/Merger";
+import { Mission } from "./pages/Mission";
+import { Pricing } from "./pages/Pricing";
 import { Profile } from "./pages/Profile";
 import { Stack } from "./pages/Stack";
 import { WhyDig } from "./pages/WhyDig";
@@ -31,6 +37,12 @@ export function App() {
       <Route path="/signup" element={<Auth mode="signup" />} />
       <Route path="/dashboard" element={app(<Dashboard />)} />
       <Route path="/profile" element={app(<Profile />)} />
+      <Route path="/pricing" element={app(<Pricing />)} />
+      <Route path="/agents" element={app(<AgentsHome />)} />
+      <Route path="/agents/flow" element={app(<Flow />)} />
+      <Route path="/agents/lens" element={app(<Lens />)} />
+      <Route path="/agents/mission" element={app(<Mission />)} />
+      <Route path="/agents/merger" element={app(<Merger />)} />
       <Route path="/events/:eventId" element={app(<EventFolder />)} />
       <Route path="/events/:eventId/:folder" element={app(<FolderBoard />)} />
       <Route path="/jobs/:jobId" element={app(<StandaloneJobBoard />)} />

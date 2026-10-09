@@ -49,10 +49,11 @@ export function searchError(status: number): PipelineError {
   return new PipelineError("SOURCE_UNAVAILABLE", `The web search service returned an error (${status}). Try again in a minute.`, status >= 500);
 }
 
-export async function tavilySearch(plan: SearchPlan): Promise<TavilyResult[]> {
+export async function tavilySearch(plan: SearchPlan, signal?: AbortSignal): Promise<TavilyResult[]> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: signal ?? AbortSignal.timeout(30_000),
     body: JSON.stringify({
       api_key: env.tavilyKey,
       query: plan.query,
@@ -63,7 +64,6 @@ export async function tavilySearch(plan: SearchPlan): Promise<TavilyResult[]> {
       ...(plan.includeDomains ? { include_domains: plan.includeDomains } : {}),
       ...(plan.chunks ? { chunks_per_source: 3 } : {}),
     }),
-    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     throw searchError(response.status);
@@ -113,10 +113,40 @@ export interface Lane {
 }
 
 const laneState = new Map<string, Lane>();
+const keyCooldown = new Map<number, number>();
+let keyCursor = 0;
+
+/** The first Groq key that is not cooling off. Null when every key is waiting out a limit. */
+function liveKey(): { index: number; key: string } | null {
+  const keys = env.llmKeys;
+  const now = Date.now();
+  for (let step = 0; step < keys.length; step += 1) {
+    const index = (keyCursor + step) % keys.length;
+    if ((keyCooldown.get(index) ?? 0) <= now) {
+      keyCursor = index;
+      const key = keys[index];
+      if (key) return { index, key };
+    }
+  }
+  return null;
+}
+
+function coolKey(index: number, ms: number) {
+  keyCooldown.set(index, Date.now() + ms);
+  const count = env.llmKeys.length;
+  if (count > 0) keyCursor = (index + 1) % count;
+}
+
+/** A new key has its own token bucket, so the lane's previous balance no longer applies. */
+function releaseLane(lane: Lane) {
+  lane.remaining = lane.capacity;
+  lane.checkedAt = Date.now();
+  lane.blockedUntil = 0;
+}
 
 export function llmLanes(): Lane[] {
   const endpoint = CHAT_ENDPOINTS[env.llmProvider];
-  if (!endpoint || !env.llmKey) {
+  if (!endpoint || env.llmKeys.length === 0) {
     throw new PipelineError(
       "LLM_UNAVAILABLE",
       "Live collection needs LLM_PROVIDER set to openai or groq, with LLM_API_KEY set in .env, to extract structured records from search results.",
@@ -171,9 +201,20 @@ export async function chatJson<T>(
   const endpoint = CHAT_ENDPOINTS[env.llmProvider] as string;
   const estimate = Math.ceil((input.system.length + input.user.length) / 3.5) + Math.min(2500, input.maxTokens);
   const reasoning = /gpt-oss/.test(lane.model) ? { reasoning_effort: "low" } : {};
+  const attempts = Math.min(8, Math.max(4, env.llmKeys.length));
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const chosen = liveKey();
+    if (!chosen) {
+      log(`${input.label}: every Groq key is cooling off`);
+      return null;
+    }
     if (!(await waitForTokens(lane, estimate, input.deadline))) {
+      coolKey(chosen.index, Math.max(1000, lane.blockedUntil - Date.now()));
+      if (liveKey()) {
+        releaseLane(lane);
+        continue;
+      }
       log(`${input.label}: skipped, not enough rate budget before the deadline`);
       return null;
     }
@@ -181,7 +222,7 @@ export async function chatJson<T>(
     try {
       response = await fetch(endpoint, {
         method: "POST",
-        headers: { Authorization: `Bearer ${env.llmKey}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${chosen.key}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: lane.model,
           temperature: 0,
@@ -206,6 +247,12 @@ export async function chatJson<T>(
       lane.remaining = Number.isFinite(remaining) ? remaining : 0;
       lane.checkedAt = Date.now();
       lane.blockedUntil = Date.now() + wait;
+      coolKey(chosen.index, wait);
+      if (liveKey()) {
+        releaseLane(lane);
+        log(`${input.label}: rate limited on ${lane.model}, switching Groq key`);
+        continue;
+      }
       // When other lanes exist, the wait is better spent there: give the work back to the caller.
       if (input.handBack || wait > 12_000 || Date.now() + wait > input.deadline) {
         log(`${input.label}: rate limited on ${lane.model} for ${Math.round(wait / 1000)}s, handing back:`, (await response.text()).slice(0, 160));
@@ -214,6 +261,16 @@ export async function chatJson<T>(
       log(`${input.label}: rate limited on ${lane.model}, retrying in ${Math.round(wait / 1000)}s`);
       await sleep(wait);
       continue;
+    }
+    if (response.status === 401 || response.status === 403) {
+      coolKey(chosen.index, 86_400_000);
+      if (liveKey()) {
+        releaseLane(lane);
+        log(`${input.label}: Groq key rejected, switching`);
+        continue;
+      }
+      log(`${input.label}: ${lane.model} returned ${response.status}`);
+      return null;
     }
     if (!response.ok) {
       log(`${input.label}: ${lane.model} returned ${response.status}`);
@@ -872,7 +929,7 @@ function contactText(text: string): string {
   return merged.map(([start, end]) => text.slice(start, end)).join("\n…\n");
 }
 
-async function contactPages(name: string): Promise<TavilyResult[]> {
+async function contactPages(name: string, signal?: AbortSignal): Promise<TavilyResult[]> {
   const cache = loadContactCache();
   const key = companyKey(name);
   const cached = cache.get(key);
@@ -882,7 +939,7 @@ async function contactPages(name: string): Promise<TavilyResult[]> {
     depth: "basic",
     maxResults: 6,
     rawContent: true,
-  });
+  }, signal);
   const trimmed = results.map((result) => ({
     title: result.title,
     url: result.url,
@@ -894,8 +951,8 @@ async function contactPages(name: string): Promise<TavilyResult[]> {
   return trimmed;
 }
 
-export async function findContact(name: string): Promise<ContactFinding[]> {
-  const results = await contactPages(name);
+export async function findContact(name: string, signal?: AbortSignal): Promise<ContactFinding[]> {
+  const results = await contactPages(name, signal);
   const official = results.find((result) => isOwnDomain(domainOf(result.url), name));
   const officialHost = official ? domainOf(official.url) : null;
   const findings: ContactFinding[] = [];

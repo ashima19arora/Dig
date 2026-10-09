@@ -31,10 +31,16 @@ export function FolderBoard() {
 
 function Unlinked(props: { event: DigEvent; folder: FolderKey; label: string; crumbs: Crumb[] }) {
   const [asking, setAsking] = useState(false);
+  const [initialQ, setInitialQ] = useState<string | undefined>(undefined);
   const meta = FOLDERS.find((item) => item.key === props.folder)!;
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api<{ jobs: JobSummary[] }>("/api/jobs") });
   // Your earlier searches of the same kind that already have results can be filed here.
   const reusable = (jobs.data?.jobs ?? []).filter((job) => job.blueprint.intent === FOLDER_INTENTS[props.folder] && job.versionNumber !== null);
+
+  const startWith = (q: string) => {
+    setInitialQ(q);
+    setAsking(true);
+  };
 
   return (
     <AppWindow crumbs={props.crumbs} sidebar={false}>
@@ -42,9 +48,16 @@ function Unlinked(props: { event: DigEvent; folder: FolderKey; label: string; cr
         <div style={{ maxWidth: 520, width: "100%" }}>
           <h3>No {meta.noun} search in this folder yet</h3>
           <p style={{ margin: "0 0 16px" }}>Start a new live search, or file one of your earlier searches here.</p>
-          <button className="btn blue" onClick={() => setAsking(true)}>
-            Start a {meta.noun} search
-          </button>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="btn blue" onClick={() => startWith(meta.example)}>
+              Start a {props.folder === "judges" ? "judge & mentor" : meta.noun} search
+            </button>
+            {props.folder === "judges" && (
+              <button className="btn" onClick={() => startWith("Keynote speakers and tech experts for our hackathon in India")}>
+                Start a speaker search
+              </button>
+            )}
+          </div>
           {jobs.isError && <p className="err" style={{ marginTop: 16 }}>Couldn’t load your earlier searches: {String(jobs.error)}</p>}
           {reusable.length > 0 && (
             <div className="card" style={{ marginTop: 24, textAlign: "left", padding: 0, maxHeight: 300, overflow: "auto" }}>
@@ -68,7 +81,7 @@ function Unlinked(props: { event: DigEvent; folder: FolderKey; label: string; cr
           )}
         </div>
       </div>
-      {asking && <NewQuerySheet event={props.event} initialQuery={meta.example} onClose={() => setAsking(false)} />}
+      {asking && <NewQuerySheet event={props.event} initialQuery={initialQ ?? meta.example} onClose={() => setAsking(false)} />}
     </AppWindow>
   );
 }

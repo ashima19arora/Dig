@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS records (
   alternates_json TEXT NOT NULL,
   sources_json TEXT NOT NULL,
   annotation_json TEXT NOT NULL,
+  contactability_json TEXT,
+  trust_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -285,4 +287,86 @@ CREATE TABLE IF NOT EXISTS outreach (
   updated_by TEXT,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (scope, canonical_entity_id)
+);
+
+-- Agents. Additive tables: workflows version their graphs, runs point at one version.
+CREATE TABLE IF NOT EXISTS workflows (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  template_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_versions (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  version_number INTEGER NOT NULL,
+  graph_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_runs (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  version_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  error TEXT,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_node_runs (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  input_json TEXT,
+  output_json TEXT,
+  error TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS workflow_approvals (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  decided_by TEXT,
+  decided_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS missions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  workflow_id TEXT,
+  dataset_job_id TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workflows_workspace ON workflows(workspace_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_workflow_versions_workflow ON workflow_versions(workflow_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow ON workflow_runs(workflow_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_workflow_node_runs_run ON workflow_node_runs(run_id, node_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_approvals_run ON workflow_approvals(run_id, status);
+CREATE INDEX IF NOT EXISTS idx_missions_workspace ON missions(workspace_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS agent_connectors (
+  workspace_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  secret TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, provider)
 );

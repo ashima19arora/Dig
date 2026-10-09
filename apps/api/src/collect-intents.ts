@@ -91,16 +91,17 @@ const SPECS: Partial<Record<IntentId, IntentSpec>> = {
     searches: (topic, place) => [
       { query: `${topic} hackathon judges ${place}`.trim(), maxResults: 8, chunks: true },
       { query: `${topic} hackathon mentors jury panel ${place}`.trim(), maxResults: 8, chunks: true },
+      { query: `${topic} hackathon conference speakers keynote ${place}`.trim(), maxResults: 8, chunks: true },
       { query: `${topic} ${place}`.trim(), includeDomains: ["scholar.google.com"], maxResults: 8, chunks: true },
       { query: `${topic} researcher professor ${place} expert`.trim(), maxResults: 6, chunks: true },
     ],
     guidance: (topic) =>
       `Each record is ONE real, named person who has judged, mentored or spoken at an event, or is a recognised expert in "${topic}". ` +
       `person_name: the full name exactly as written. affiliation: their company, university or title as written. ` +
-      `expertise: their field or research topic as written. event_name: the event they judged/mentored, if named. ` +
+      `expertise: their field or research topic as written. event_name: the event they judged, mentored or spoke at, if named. ` +
       `email: only if written. Skip organisations, teams and anyone without a full name.`,
     identity: ["person_name"],
-    reject: (fields) => !/\s/.test((fields.person_name ?? "").trim()) || /\b(team|committee|panel|judges|mentors)\b/i.test(fields.person_name ?? ""),
+    reject: (fields) => !/\s/.test((fields.person_name ?? "").trim()) || /\b(team|committee|panel|judges|mentors|speakers)\b/i.test(fields.person_name ?? ""),
   },
 };
 

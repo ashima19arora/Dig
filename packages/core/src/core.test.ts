@@ -4,7 +4,7 @@ import { dedupeRecords } from "./dedupe.js";
 import { collectDemo, DEMO_NOW, SPONSOR_DIFF } from "./demo-data.js";
 import { diffDatasets } from "./diff.js";
 import { matchIntent } from "./intents.js";
-import { applyThreshold, mockJevProvider } from "./jev.js";
+import { applyThreshold, mockJevProvider, type JevDecision } from "./jev.js";
 import { canonicalCompanyName, comparisonKey, normalizeEmail, normalizeUrl, similarity } from "./normalize.js";
 import { runPipeline } from "./pipeline.js";
 import { backoffMs, withRetry } from "./util.js";
@@ -18,6 +18,10 @@ describe("intent matching", () => {
     expect(matchIntent("Map the SaaS competitor landscape for project management tools").intent).toBe("COMPETITOR_LOOKUP");
     expect(matchIntent("Find startup funding opportunities in India").intent).toBe("FUNDING_LOOKUP");
     expect(matchIntent("Find enterprise AI vendors for analytics and machine learning").intent).toBe("VENDOR_LOOKUP");
+    expect(matchIntent("Find keynote speakers for AI conference in Delhi").intent).toBe("JUDGE_LOOKUP");
+    expect(matchIntent("speaker search").intent).toBe("JUDGE_LOOKUP");
+    expect(matchIntent("sponsor search").intent).toBe("SPONSOR_LOOKUP");
+    expect(matchIntent("AI hackathon mentors and judges in Bangalore").intent).toBe("JUDGE_LOOKUP");
   });
 
   it("builds a sponsor blueprint with Delhi NCR and nine fields", () => {
@@ -169,7 +173,7 @@ describe("diff and conflicts", () => {
         authority: "official",
         confidence: 0.94,
       },
-    }), 0.85);
+    }) as JevDecision, 0.85);
     expect(low.status).toBe("PENDING");
     expect(high.status).toBe("AUTO_RESOLVED");
     expect(high.decision.decision).toBe("NEW");

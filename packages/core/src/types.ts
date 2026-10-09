@@ -11,11 +11,56 @@ export interface ProvenanceSource {
   demo: boolean;
 }
 
+export type ContactChannelStatus = "VERIFIED" | "IDENTITY_MATCHED" | "PROVIDER_MATCHED" | "LIKELY" | "NEEDS_REVIEW" | "NOT_FOUND";
+
+export interface ContactChannel {
+  value: string | null;
+  status: ContactChannelStatus;
+  confidence: number;
+  provider: string | null;
+  sourceUrl: string | null;
+  fetchedAt: string | null;
+  verificationStatus: string | null;
+  /** Why this path was attached or held back. Not a substitute for the source text. */
+  matchingEvidence: string | null;
+  /** provider_enrichment when Hunter, GitHub, or another provider supplied the value. */
+  sourceType?: "official" | "secondary" | "press" | "provider_enrichment";
+}
+
+export interface Contactability {
+  score: number;
+  status: "NONE" | "PARTIAL" | "READY";
+  channels: {
+    email: ContactChannel;
+    phone: ContactChannel;
+    linkedin: ContactChannel;
+    github: ContactChannel;
+    website: ContactChannel;
+    contactPage: ContactChannel;
+  };
+}
+
+export type TrustStatus = "HIGH_TRUST" | "MEDIUM_TRUST" | "NEEDS_REVIEW" | "UNTRUSTED";
+
+export interface TrustDecision {
+  identityConfidence: number;
+  evidenceConfidence: number;
+  contactConfidence: number;
+  overallTrust: number;
+  needsReviewProbability: number;
+  status: TrustStatus;
+  provider: string;
+  model: string;
+  timestamp: string;
+}
+
 export interface CollectedRecord {
   canonicalEntityId: string;
   fields: Record<string, string>;
   sources: ProvenanceSource[];
   ambiguousFields?: string[];
+  contactability?: Contactability;
+  trust?: TrustDecision;
 }
 
 export interface EvidenceItem {
@@ -75,6 +120,8 @@ export interface ConflictDraft {
   confidence: number;
   reason: string;
   ambiguous: boolean;
+  /** "jev" when Jev answered. "mock" when Dig's evidence rules answered. */
+  provider?: string;
 }
 
 export interface PublishedRecord {
@@ -113,6 +160,8 @@ export interface PublishedRecord {
     reasoning: string;
     confidence: number;
   };
+  contactability?: Contactability;
+  trust?: TrustDecision;
 }
 
 export interface ReportFinding {

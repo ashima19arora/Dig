@@ -37,6 +37,8 @@ export function dedupeRecords(records: CollectedRecord[], identityFields: string
         sources: [...existing.sources, ...record.sources],
         ambiguousFields: [...new Set([...(existing.ambiguousFields ?? []), ...(record.ambiguousFields ?? [])])],
         flags: existing.flags.filter((flag) => flag !== "POSSIBLE_DUPLICATE"),
+        contactability: existing.contactability ?? record.contactability,
+        trust: existing.trust ?? record.trust,
       };
       continue;
     }

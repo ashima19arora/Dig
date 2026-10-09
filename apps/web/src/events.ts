@@ -11,12 +11,12 @@ import { notifyError } from "./toast";
 
 export type { FolderKey };
 
-export const FOLDERS: Array<{ key: FolderKey; label: string; noun: string; example: string }> = [
-  { key: "sponsors", label: "Sponsors", noun: "sponsor", example: "Find sponsors for hackathons in India" },
-  { key: "judges", label: "Judges & Mentors", noun: "judge or mentor", example: "AI researchers who could judge our hackathon in Delhi" },
-  { key: "jobs", label: "Jobs", noun: "job", example: "Frontend internships in Bangalore" },
-  { key: "leads", label: "Leads", noun: "lead", example: "D2C skincare brands in Mumbai we could pitch our analytics tool to" },
-  { key: "competitors", label: "Competitors", noun: "competitor", example: "What are the alternatives to Notion?" },
+export const FOLDERS: Array<{ key: FolderKey; label: string; noun: string; example: string; aliases: string[] }> = [
+  { key: "sponsors", label: "Sponsors", noun: "sponsor", example: "Find sponsors for hackathons in India", aliases: ["sponsors", "sponsor", "partners", "sponsorship"] },
+  { key: "judges", label: "Judges & Mentors", noun: "judge, mentor or speaker", example: "AI researchers and keynote speakers for our hackathon in Delhi", aliases: ["judges", "judge", "mentors", "mentor", "speakers", "speaker", "keynote", "jury", "experts"] },
+  { key: "jobs", label: "Jobs", noun: "job", example: "Frontend internships in Bangalore", aliases: ["jobs", "job", "internships", "internship", "roles", "hiring"] },
+  { key: "leads", label: "Leads", noun: "lead", example: "D2C skincare brands in Mumbai we could pitch our analytics tool to", aliases: ["leads", "lead", "prospects", "clients", "sales"] },
+  { key: "competitors", label: "Competitors", noun: "competitor", example: "What are the alternatives to Notion?", aliases: ["competitors", "competitor", "alternatives", "rivals"] },
 ];
 
 export interface DigEvent {

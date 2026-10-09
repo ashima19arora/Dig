@@ -41,10 +41,15 @@ export const INTENTS: Record<IntentId, IntentDefinition> = {
     rankingStrategy: "activity",
     collectionStrategy: "event_and_company_pages",
     keywords: [
-      { phrase: "sponsors", weight: 8 },
+      { phrase: "sponsors", weight: 9 },
       { phrase: "sponsor", weight: 8 },
       { phrase: "sponsorship", weight: 8 },
-      { phrase: "event partner", weight: 5 },
+      { phrase: "sponsoring", weight: 8 },
+      { phrase: "event partner", weight: 6 },
+      { phrase: "event partners", weight: 6 },
+      { phrase: "partnerships", weight: 5 },
+      { phrase: "hackathon sponsors", weight: 9 },
+      { phrase: "hackathon sponsor", weight: 9 },
     ],
   },
   JOB_LOOKUP: {
@@ -239,15 +244,29 @@ export const INTENTS: Record<IntentId, IntentDefinition> = {
     rankingStrategy: "activity",
     collectionStrategy: "event_pages_and_scholar",
     keywords: [
+      { phrase: "speakers", weight: 9 },
+      { phrase: "speaker", weight: 8 },
+      { phrase: "keynote speaker", weight: 9 },
+      { phrase: "keynote speakers", weight: 9 },
+      { phrase: "guest speaker", weight: 8 },
+      { phrase: "guest speakers", weight: 8 },
+      { phrase: "keynote", weight: 7 },
+      { phrase: "keynotes", weight: 7 },
       { phrase: "judges", weight: 9 },
       { phrase: "judge", weight: 8 },
       { phrase: "jury", weight: 7 },
       { phrase: "mentors", weight: 8 },
       { phrase: "mentor", weight: 7 },
       { phrase: "panelists", weight: 6 },
-      { phrase: "experts", weight: 4 },
+      { phrase: "panelist", weight: 6 },
+      { phrase: "experts", weight: 5 },
+      { phrase: "expert", weight: 4 },
       { phrase: "researchers", weight: 5 },
+      { phrase: "researcher", weight: 4 },
       { phrase: "professors", weight: 5 },
+      { phrase: "professor", weight: 4 },
+      { phrase: "evaluators", weight: 5 },
+      { phrase: "evaluator", weight: 5 },
     ],
   },
 };
@@ -271,8 +290,8 @@ export function matchIntent(query: string): IntentMatch {
       const pattern = new RegExp(`\\b${keyword.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
       if (pattern.test(text)) score += keyword.weight;
     }
-    if (intent.id === "EVENT_LOOKUP" && /\bsponsor/.test(text)) score -= 4;
-    if (intent.id === "MARKET_LOOKUP" && /\bcompetitor/.test(text)) score -= 3;
+    if (intent.id === "EVENT_LOOKUP" && /\b(sponsor|sponsors|sponsoring|judge|judges|mentor|mentors|speaker|speakers|keynote)\b/i.test(text)) score -= 6;
+    if (intent.id === "MARKET_LOOKUP" && /\b(competitor|sponsor|judge|mentor|speaker|lead|job)\b/i.test(text)) score -= 4;
     if (intent.id === "PRODUCT_LOOKUP" && /\bvendor/.test(text)) score -= 3;
     return { intent: intent.id, score };
   });
