@@ -39,6 +39,7 @@ import {
 } from "../api";
 import { AppWindow, type Crumb } from "../components/Shell";
 import { notify, notifyError } from "../toast";
+import { downloadDatasetPdf } from "./dataset-pdf-report";
 
 type Pair = [string, string];
 
@@ -346,13 +347,29 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
     },
   });
 
-  const generateReport = async () => {
+  const generatePdfReport = async () => {
+    if (!version || records.length === 0) {
+      notify("No records to export in this dataset version.", "info");
+      return;
+    }
     setReport({ busy: true, error: null });
     try {
-      await download(`/api/jobs/${jobId}/export?format=report`, "dig-report.md");
+      await downloadDatasetPdf({
+        jobName: job?.name ?? "Dataset Intelligence Report",
+        query: job?.query ?? "",
+        intent: job?.blueprint.intent ?? "SPONSOR_LOOKUP",
+        versionNumber: version.versionNumber,
+        createdAt: version.createdAt,
+        qualityScore: version.qualityScore,
+        avgConfidence: version.avgConfidence,
+        records,
+        conflicts,
+        outreach,
+      });
+      notify("Executive PDF report generated successfully!", "info");
       setReport({ busy: false, error: null });
     } catch (error) {
-      setReport({ busy: false, error: error instanceof Error ? error.message : "The report couldn’t be generated." });
+      setReport({ busy: false, error: error instanceof Error ? error.message : "The PDF report couldn’t be generated." });
     }
   };
 
@@ -619,9 +636,9 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   <button>JSON (.json)</button>
                 </a>
                 <div className="menu-sep" />
-                <button onClick={() => void generateReport()} disabled={report.busy}>
+                <button onClick={() => void generatePdfReport()} disabled={report.busy} title="Generate publication-grade executive PDF dossier">
                   <FileText size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 6 }} />
-                  Generate report (.md)
+                  {report.busy ? "Generating PDF…" : "Executive Report (.pdf)"}
                 </button>
               </div>
             )}
