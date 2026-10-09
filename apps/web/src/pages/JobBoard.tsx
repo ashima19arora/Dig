@@ -1194,7 +1194,7 @@ function Cell({ value, className }: { value?: string; className?: string }) {
   );
 }
 
-function DossierCard({
+function DossierControlBar({
   record,
   primary,
   outreachStatus,
@@ -1215,7 +1215,7 @@ function DossierCard({
   const phone = record.fields.phone || record.contactability?.channels?.phone?.value;
   const website = getWebsite(record);
   const primaryChannel = email ? "Email" : phone ? "Phone" : website ? "Web" : "None";
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${name} ${record.fields.role || record.fields.type || "sponsor leadership"} contact email`)}`;
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${name} ${record.fields.role || record.fields.type || "sponsor leadership"} contact email site:linkedin.com`)}`;
 
   const copyDossier = () => {
     const summary = [
@@ -1239,35 +1239,29 @@ function DossierCard({
   };
 
   return (
-    <div className="dossier-card">
-      <div className="dossier-head">
-        <CompanyLogo record={record} name={name} className="dossier-avatar" />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {name}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Intelligence Dossier · ID {record.canonicalEntityId.slice(0, 8)}
-          </div>
-        </div>
-        <span className={`veracity-pill ${(record.confidence ?? 0.8) >= 0.8 ? "high" : "med"}`}>
-          {Math.round((record.confidence ?? 0.8) * 100)}% Veracity
+    <div className="dossier-control-bar">
+      {/* Sleek Metadata & Channels Strip */}
+      <div className="dossier-meta-strip">
+        <span className={`dossier-status-pill ${outreachStatus}`} title="Outreach tracking status">
+          {outreachStatus === "interested" ? (
+            <Check size={11} strokeWidth={2.6} />
+          ) : outreachStatus === "declined" ? (
+            <X size={11} strokeWidth={2.6} />
+          ) : (
+            <Clock size={11} />
+          )}
+          <span>{OUTREACH[outreachStatus]?.label ?? "Not contacted"}</span>
         </span>
-      </div>
 
-      <div className="dossier-meta-grid">
-        <div className="dossier-meta-item">
-          <span className="lbl">Outreach</span>
-          <span className="val">{OUTREACH[outreachStatus]?.label ?? "Not contacted"}</span>
-        </div>
-        <div className="dossier-meta-item">
-          <span className="lbl">Primary Channel</span>
-          <span className="val">{primaryChannel}</span>
-        </div>
-        <div className="dossier-meta-item">
-          <span className="lbl">Evidence Sources</span>
-          <span className="val">{record.sourceCount ?? 1}</span>
-        </div>
+        <span className="dossier-meta-pill" title="Verified source citations">
+          <FileText size={11} />
+          <span>{record.sourceCount ?? 1} source{(record.sourceCount ?? 1) === 1 ? "" : "s"}</span>
+        </span>
+
+        <span className="dossier-meta-pill" title={`Primary reachability channel: ${primaryChannel}`}>
+          <span className="dot-channel" />
+          <span>{primaryChannel}</span>
+        </span>
       </div>
 
       {/* Quick 1-click copy chips for email & phone */}
@@ -1308,39 +1302,37 @@ function DossierCard({
         </div>
       )}
 
-      {/* Optimized Action Suite: Hero Draft Pitch + Balanced 2-col Secondary Grid */}
-      <div className="dossier-actions-suite">
+      {/* Balanced 3-action toolbar */}
+      <div className="dossier-actions-strip">
         <button
           className="dossier-btn-hero"
           onClick={onDraftPitch}
           title="Draft personalized AI outreach pitch"
         >
           <Sparkles size={13} />
-          <span>Draft AI Outreach Pitch</span>
+          <span>Draft Pitch</span>
         </button>
 
-        <div className="dossier-actions-grid">
-          <a
-            href={searchUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="dossier-btn-sub"
-            title="Search decision-makers and leads for this entity"
-          >
-            <Search size={12} />
-            <span>Search Leads</span>
-            <ExternalLink size={10} style={{ opacity: 0.6 }} />
-          </a>
+        <a
+          href={searchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="dossier-btn-sub"
+          title="Search decision-makers and leads for this entity"
+        >
+          <Search size={11} />
+          <span>Search Leads</span>
+          <ExternalLink size={10} style={{ opacity: 0.6 }} />
+        </a>
 
-          <button
-            className={`dossier-btn-sub ${copied ? "copied" : ""}`}
-            onClick={copyDossier}
-            title="Copy complete intelligence dossier"
-          >
-            {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
-            <span>{copied ? "Copied!" : "Copy Dossier"}</span>
-          </button>
-        </div>
+        <button
+          className={`dossier-btn-sub ${copied ? "copied" : ""}`}
+          onClick={copyDossier}
+          title="Copy complete intelligence dossier"
+        >
+          {copied ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+          <span>{copied ? "Copied" : "Copy"}</span>
+        </button>
       </div>
     </div>
   );
@@ -1364,29 +1356,42 @@ function RecordPanel(props: {
   const pending = props.conflicts.filter((conflict) => conflict.status === "PENDING");
   const settled = props.conflicts.filter((conflict) => conflict.status !== "PENDING");
   const [primary, ...rest] = props.view.columns.map(([key]) => key);
+  const name = record.fields[primary ?? ""] ?? record.label;
   const subtitle = rest.map((key) => record.fields[key]).filter(Boolean).slice(0, 2).join(" · ");
+
   return (
     <aside className="detail">
       <div className="detail-head">
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="detail-head-top">
           <div className="sidebar-eyebrow">
-            <ShieldCheck size={11} color="#10b981" />
+            <ShieldCheck size={12} color="#10b981" />
             <span>Proof &amp; Evidence Dossier</span>
+            <span className="eyebrow-sep">·</span>
+            <span className={`veracity-pill ${(record.confidence ?? 0.8) >= 0.8 ? "high" : "med"}`}>
+              {Math.round((record.confidence ?? 0.8) * 100)}% Veracity
+            </span>
           </div>
-          <h2>{record.fields[primary ?? ""] ?? record.label}</h2>
-          <div className="sub">{subtitle}</div>
+          <button
+            className="sidebar-close-btn"
+            onClick={props.onClose}
+            title="Collapse Evidence Sidebar"
+            aria-label="Collapse sidebar"
+          >
+            <PanelRightClose size={15} />
+          </button>
         </div>
-        <button
-          className="sidebar-close-btn"
-          onClick={props.onClose}
-          title="Collapse Evidence Sidebar"
-          aria-label="Collapse sidebar"
-        >
-          <PanelRightClose size={15} />
-        </button>
+
+        <div className="detail-identity-row">
+          <CompanyLogo record={record} name={name} className="dossier-avatar" />
+          <div className="detail-identity-text">
+            <h2>{name}</h2>
+            {subtitle && <div className="sub">{subtitle}</div>}
+          </div>
+        </div>
       </div>
+
       <div className="detail-body">
-        <DossierCard
+        <DossierControlBar
           record={record}
           primary={primary}
           outreachStatus={props.outreachStatus}
