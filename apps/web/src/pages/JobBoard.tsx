@@ -15,6 +15,7 @@ import {
   Pencil,
   Phone,
   Play,
+  Quote,
   RotateCw,
   Search,
   ShieldCheck,
@@ -1281,44 +1282,6 @@ function DossierControlBar({
         </span>
       </div>
 
-      {/* Quick 1-click copy chips for email & phone */}
-      {(email || phone) && (
-        <div className="dossier-quick-copy-bar">
-          {email && (
-            <button
-              type="button"
-              className="dossier-quick-copy-chip"
-              onClick={(e) => copyText(email, `dossier-email-${record.id}`, e)}
-              title="Click to copy verified email"
-            >
-              <Mail size={11} color="#4c6fff" />
-              <span className="dossier-quick-copy-val">{email}</span>
-              {copiedId === `dossier-email-${record.id}` ? (
-                <Check size={10} color="#10b981" />
-              ) : (
-                <Copy size={10} style={{ opacity: 0.6 }} />
-              )}
-            </button>
-          )}
-          {phone && (
-            <button
-              type="button"
-              className="dossier-quick-copy-chip"
-              onClick={(e) => copyText(phone, `dossier-phone-${record.id}`, e)}
-              title="Click to copy verified phone"
-            >
-              <Phone size={11} color="#10b981" />
-              <span className="dossier-quick-copy-val">{phone}</span>
-              {copiedId === `dossier-phone-${record.id}` ? (
-                <Check size={10} color="#10b981" />
-              ) : (
-                <Copy size={10} style={{ opacity: 0.6 }} />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Balanced 3-action toolbar */}
       <div className="dossier-actions-strip">
         <button
@@ -1348,7 +1311,7 @@ function DossierControlBar({
           title="Copy complete intelligence dossier"
         >
           {copied ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
+          <span>{copied ? "Copied" : "Copy Dossier"}</span>
         </button>
       </div>
     </div>
@@ -1464,22 +1427,57 @@ function RecordPanel(props: {
           </div>
         ))}
 
-        <ContactPaths record={record} />
+        <ContactPaths record={record} copiedId={props.copiedId} copyText={props.copyText} />
 
-        {props.view.cards.map(([key, label]) => {
-          const value = record.fields[key];
-          if (!value) return null;
+        {/* Extracted Facts & Ground-Truth DOM Citations */}
+        {(() => {
+          const evidenceFields = props.view.cards.filter(([key]) => {
+            const val = record.fields[key];
+            if (!val || key === "last_verified") return false;
+            const evidence = pickEvidence(record.evidence, key, val);
+            const isChannel = key === "email" || key === "phone" || key === "website" || key === "contactPage" || key === "profile_url";
+            // If it's already shown in header or ContactPaths and has no excerpt quote, omit to keep sidebar clean & non-redundant
+            if ((key === primary || isChannel) && !evidence?.excerpt) {
+              return false;
+            }
+            return true;
+          });
+
+          if (evidenceFields.length === 0) return null;
+
           return (
-            <FieldCard
-              key={key}
-              field={key}
-              label={label}
-              value={value}
-              evidence={pickEvidence(record.evidence, key, value)}
-              versionNumber={props.versionNumber}
-            />
+            <div className="evidence-section">
+              <div className="section-eyebrow">
+                <FileText size={11} />
+                <span>Extracted Facts &amp; Citations</span>
+              </div>
+              <div className="evidence-cards-list">
+                {evidenceFields.map(([key, label]) => {
+                  const val = record.fields[key];
+                  return (
+                    <FieldCard
+                      key={key}
+                      field={key}
+                      label={label}
+                      value={val}
+                      evidence={pickEvidence(record.evidence, key, val)}
+                      versionNumber={props.versionNumber}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           );
-        })}
+        })()}
+
+        {/* Provenance Footnote */}
+        <div className="evidence-lineage-foot">
+          <Clock size={11} />
+          <span>
+            Captured on run · {day(record.fields.last_verified || new Date().toISOString(), true)}
+            {props.versionNumber > 1 ? ` · Supersedes v${props.versionNumber - 1}` : ""}
+          </span>
+        </div>
       </div>
     </aside>
   );
@@ -1640,12 +1638,23 @@ const TRUST_STATUS: Record<string, string> = {
   UNTRUSTED: "Untrusted",
 };
 
-function ContactPaths({ record }: { record: DatasetRecord }) {
+function ContactPaths({
+  record,
+  copiedId,
+  copyText,
+}: {
+  record: DatasetRecord;
+  copiedId?: string | null;
+  copyText?: (text: string, id: string, e?: React.MouseEvent) => void;
+}) {
   const book = record.contactability;
   if (!book) return null;
   return (
-    <div className="card">
-      <div className="cap">Contact paths</div>
+    <div className="card contact-paths-card">
+      <div className="section-eyebrow">
+        <Phone size={11} />
+        <span>Contact Paths &amp; Reachability</span>
+      </div>
       <div className="paths">
         {PATHS.map(([label, key]) => {
           const item = book.channels[key];
@@ -1658,50 +1667,87 @@ function ContactPaths({ record }: { record: DatasetRecord }) {
           const href = found && effectiveValue && /^https?:\/\//i.test(effectiveValue) ? effectiveValue : null;
           const companyName = record.fields.company_name || record.label || "";
           const linkedinSearchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
+          const isCopyable = (key === "email" || key === "phone") && found && Boolean(effectiveValue);
+          const copyKey = `cp-${key}-${record.id}`;
 
           return (
             <div key={key} className="path">
-              <span className={found ? "ok" : "miss"}>{found ? "✓" : "—"}</span>
-              <span>{label}</span>
-              <span>
-                {href ? (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {href.replace(/^https?:\/\/(www\.)?/, "")}
-                  </a>
-                ) : found ? (
-                  effectiveValue
-                ) : key === "linkedin" ? (
-                  <>
-                    <span style={{ color: "var(--text-3)" }}>Not found</span>
-                    <span style={{ margin: "0 5px", opacity: 0.4 }}>·</span>
-                    <a
-                      href={linkedinSearchUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="linkedin-finder-link"
-                      style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3, verticalAlign: "middle" }}
-                      title={`Search LinkedIn for ${companyName} partnership contacts`}
-                    >
-                      <span>Search LinkedIn</span>
-                      <ExternalLink size={10} />
-                    </a>
-                  </>
-                ) : (
-                  "Not found"
-                )}
-                <span className="meta">
-                  {key === "linkedin" && !found
-                    ? "No direct profile · 1-click search fallback"
-                    : `${PATH_STATUS[item.status] ?? item.status}${found ? ` · ${Math.round(item.confidence * 100)}%` : ""}${item.provider && item.provider !== "research" ? ` · ${item.provider}` : ""}`}
-                </span>
+              <span className={found ? "ok" : "miss"}>
+                {found ? <Check size={11} style={{ color: "#10b981", flexShrink: 0 }} /> : "—"}
               </span>
+              <span className="path-label">{label}</span>
+              <div className="path-content">
+                <div className="path-value-row">
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer" className="path-link">
+                      {href.replace(/^https?:\/\/(www\.)?/, "")}
+                    </a>
+                  ) : key === "email" && found ? (
+                    <a href={`mailto:${effectiveValue}`} className="path-link">
+                      {effectiveValue}
+                    </a>
+                  ) : key === "phone" && found ? (
+                    <a href={`tel:${(effectiveValue || "").replace(/[^0-9+]/g, "")}`} className="path-link">
+                      {effectiveValue}
+                    </a>
+                  ) : found ? (
+                    <span className="path-val-text">{effectiveValue}</span>
+                  ) : key === "linkedin" ? (
+                    <div className="path-fallback-wrap">
+                      <span style={{ color: "var(--text-3)" }}>Not found</span>
+                      <span className="path-sep">·</span>
+                      <a
+                        href={linkedinSearchUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="linkedin-finder-link"
+                        title={`Search LinkedIn for ${companyName} partnership contacts`}
+                      >
+                        <span>Search LinkedIn</span>
+                        <ExternalLink size={9} />
+                      </a>
+                    </div>
+                  ) : (
+                    <span style={{ color: "var(--text-3)" }}>Not found</span>
+                  )}
+
+                  {isCopyable && copyText && (
+                    <button
+                      type="button"
+                      className="path-copy-btn"
+                      onClick={(e) => copyText(effectiveValue!, copyKey, e)}
+                      title={`Copy verified ${label.toLowerCase()}`}
+                    >
+                      {copiedId === copyKey ? <Check size={10} color="#10b981" /> : <Copy size={10} />}
+                    </button>
+                  )}
+                </div>
+
+                <div className="meta">
+                  {key === "linkedin" && !found
+                    ? "No direct profile · 1-click fallback"
+                    : `${PATH_STATUS[item.status] ?? item.status}${found ? ` · ${Math.round(item.confidence * 100)}%` : ""}${item.provider && item.provider !== "research" ? ` · ${item.provider}` : ""}`}
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
       {record.trust && (
-        <div className="trust-line">
-          Trust {Math.round(record.trust.overallTrust * 100)}% · {TRUST_STATUS[record.trust.status] ?? record.trust.status}
+        <div className="trust-meter-row">
+          <div className="trust-meter-info">
+            <span>Overall Reachability Trust</span>
+            <b>{Math.round(record.trust.overallTrust * 100)}% · {TRUST_STATUS[record.trust.status] ?? record.trust.status}</b>
+          </div>
+          <div className="trust-meter-track">
+            <div
+              className="trust-meter-fill"
+              style={{
+                width: `${Math.round(record.trust.overallTrust * 100)}%`,
+                background: record.trust.overallTrust >= 0.8 ? "#10b981" : "#f59e0b",
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -1715,43 +1761,57 @@ function pickEvidence(evidence: Evidence[], field: string, value: string) {
 
 function FieldCard(props: { field: string; label: string; value: string; evidence?: Evidence; versionNumber: number }) {
   const { field, value, evidence } = props;
-  if (field === "last_verified") {
-    return (
-      <div className="card">
-        <div className="cap">{props.label}</div>
-        <div className="val">{day(value, true)}</div>
-        <div style={{ fontSize: 13, color: "var(--text-2)" }}>
-          Collected this run{props.versionNumber > 1 ? `, superseding the v${props.versionNumber - 1} snapshot` : ""}.
-        </div>
-      </div>
-    );
-  }
   const quote = evidence && !LINK_FIELDS.has(field) ? around(evidence.excerpt, value) : null;
   return (
-    <div className="card">
-      <div className="cap">{props.label}</div>
-      <div className="val">
+    <div className="card evidence-card">
+      <div className="evidence-card-head">
+        <span className="field-card-cap">{props.label}</span>
+        {evidence && (
+          <span className={`authority-chip ${evidence.authority}`}>
+            {evidence.authority === "official" ? "OFFICIAL DOM" : evidence.authority.toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div className="field-card-val">
         {LINK_FIELDS.has(field) ? (
-          <a href={value} target="_blank" rel="noreferrer" style={{ color: "var(--link)", textDecoration: "none" }}>
+          <a href={value} target="_blank" rel="noreferrer" className="field-link">
             {value.replace(/^https?:\/\//, "")}
           </a>
         ) : (
           value
         )}
       </div>
+
       {quote && (
-        <div className="quote">
-          “{quote.before}
-          <b>{quote.hit}</b>
-          {quote.after}”
+        <div className="evidence-quote-bubble">
+          <div className="quote-tag">
+            <Quote size={9} />
+            <span>Quoted verbatim from DOM</span>
+          </div>
+          <div className="quote-text">
+            “{quote.before}
+            <mark className="quote-highlight">{quote.hit}</mark>
+            {quote.after}”
+          </div>
         </div>
       )}
-      {evidence && (
-        <div className="src">
-          <a href={evidence.sourceUrl} target="_blank" rel="noreferrer" title={evidence.sourceTitle}>
-            {evidence.sourceUrl.replace(/^https?:\/\/(www\.)?/, "")}
+
+      {evidence?.sourceUrl && (
+        <div className="evidence-source-row">
+          <a
+            href={evidence.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={evidence.sourceTitle || evidence.sourceUrl}
+            className="source-link"
+          >
+            <ExternalLink size={10} style={{ flexShrink: 0 }} />
+            <span>{evidence.sourceUrl.replace(/^https?:\/\/(www\.)?/, "")}</span>
           </a>
-          <span className={`chip ${evidence.authority}`}>{evidence.authority.toUpperCase()}</span>
+          {evidence.collectedAt && (
+            <span className="evidence-timestamp">{day(evidence.collectedAt)}</span>
+          )}
         </div>
       )}
     </div>
