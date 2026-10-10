@@ -315,6 +315,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const [tab, setTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [panel, setPanel] = useState<Panel>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [report, setReport] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -472,6 +473,54 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const job = jobQ.data?.job;
   const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
   const pitchable = PITCH_INTENTS.has(job?.blueprint.intent ?? "");
+
+  // Column widths, dragged like a spreadsheet and remembered per search type in this browser.
+  const widthKey = `dig-col-widths-${job?.blueprint.intent ?? "SPONSOR_LOOKUP"}`;
+  useEffect(() => {
+    try {
+      setColWidths(JSON.parse(localStorage.getItem(widthKey) ?? "{}") as Record<string, number>);
+    } catch {
+      setColWidths({});
+    }
+  }, [widthKey]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(widthKey, JSON.stringify(colWidths));
+    } catch {
+      // Remembering widths is a convenience only.
+    }
+  }, [widthKey, colWidths]);
+
+  const startResize = (key: string) => (down: React.MouseEvent<HTMLSpanElement>) => {
+    down.preventDefault();
+    down.stopPropagation();
+    const header = down.currentTarget.parentElement;
+    if (!header) return;
+    const startX = down.clientX;
+    const startWidth = header.getBoundingClientRect().width;
+    const move = (event: MouseEvent) => {
+      const width = Math.round(Math.min(640, Math.max(70, startWidth + event.clientX - startX)));
+      setColWidths((current) => ({ ...current, [key]: width }));
+    };
+    const stop = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", stop);
+      document.body.classList.remove("resizing-columns");
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", stop);
+    document.body.classList.add("resizing-columns");
+  };
+
+  // Table order: checkbox, #, first column, Outreach, then the rest. One rule sizes the header and every cell.
+  const columnWidthCss = Object.entries(colWidths)
+    .map(([key, width]) => {
+      const index = view.columns.findIndex(([column]) => column === key);
+      if (index < 0) return "";
+      const position = index === 0 ? 3 : index + 4;
+      return `.resizable-grid tr > :nth-child(${position}) { width: ${width}px; min-width: ${width}px; max-width: ${width}px; }`;
+    })
+    .join("\n");
 
   /** Only a choice you must make: a re-run found a different value and Dig could not decide which is right. */
   const needsReview = (record: DatasetRecord) =>
@@ -868,7 +917,8 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 </div>
               </div>
               <div className="table-scroll">
-                <table className="data-grid">
+                <style>{columnWidthCss}</style>
+                <table className="data-grid resizable-grid">
                   <thead>
                     <tr>
                       <th style={{ width: 34, textAlign: "center" }}>
@@ -904,6 +954,16 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           ) : (
                             <Filter size={11} className="f" />
                           )}
+                          <span
+                            className="col-resize"
+                            title="Drag to resize. Double-click to reset."
+                            onMouseDown={startResize(column.key)}
+                            onClick={(click) => click.stopPropagation()}
+                            onDoubleClick={(click) => {
+                              click.stopPropagation();
+                              setColWidths(({ [column.key]: _reset, ...rest }) => rest);
+                            }}
+                          />
                         </th>
                         {index === 0 && <th title="Who has been contacted — click a row’s mark to change it">Outreach</th>}
                         </Fragment>

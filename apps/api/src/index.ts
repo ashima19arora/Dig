@@ -43,7 +43,7 @@ const DEMO_JOBS: Array<{ query: string; showcase: boolean }> = [
 
 const SUPPORTED = new Set<IntentId>(LIVE_INTENTS);
 const FOLDER_FOR = Object.fromEntries(Object.entries(FOLDER_INTENTS).map(([folder, intent]) => [intent, folder])) as Partial<Record<IntentId, FolderKey>>;
-const SUPPORTED_TEXT = "Dig can research sponsors, judges & mentors, jobs, leads and competitors right now.";
+const SUPPORTED_TEXT = "Right now Dig finds sponsors, judges, mentors and speakers, jobs, leads and companies, and competitors.";
 
 function requestIdOf(req: Request) {
   return (req as Request & { requestId?: string }).requestId ?? "";
@@ -58,7 +58,7 @@ function fail(res: Response, req: Request, status: number, code: string, message
 }
 
 function unsupported(res: Response, req: Request, intent: IntentId) {
-  return fail(res, req, 422, "UNSUPPORTED_INTENT", `${INTENT_LABELS[intent]} isn’t supported yet. ${SUPPORTED_TEXT}`, { intent });
+  return fail(res, req, 422, "UNSUPPORTED_INTENT", `${INTENT_LABELS[intent]} is coming soon. ${SUPPORTED_TEXT}`, { intent });
 }
 
 function authOf(req: Request) {
@@ -95,9 +95,16 @@ function changeFor(entityId: string, diff: { added?: Array<{ canonicalEntityId: 
 }
 
 /** Reads the question with the LLM (keyword fallback) and builds the collection blueprint from it. */
+/**
+ * Company-shaped questions Dig has no recipe for yet ("caterers in Delhi", "AI vendors", "devtools for
+ * startups") run as Leads: a list of companies with what they do and how to reach them.
+ */
+const RUN_AS_LEADS = new Set<IntentId>(["COMPANY_LOOKUP", "VENDOR_LOOKUP", "PRODUCT_LOOKUP"]);
+
 async function planFor(query: string) {
   const parsed = await parseQuery(query);
-  const { blueprint } = buildBlueprint(query, parsed.intent, parsed.entities);
+  const intent = RUN_AS_LEADS.has(parsed.intent) ? "LEAD_LOOKUP" : parsed.intent;
+  const { blueprint } = buildBlueprint(query, intent, parsed.entities);
   return { parsed, blueprint };
 }
 

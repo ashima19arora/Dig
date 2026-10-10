@@ -3953,6 +3953,16 @@ html[data-theme="dark"] .cycle-badge { background: #064e3b; color: #6ee7b7; bord
 .ob.interested { background: #e3f3e6; border-color: #9fd3aa; color: #1f7a35; }
 .ob.declined { background: #fdecea; border-color: #f0b4ad; color: #c62828; }
 .ob.waiting { background: #fff6e0; border-color: #ecd08a; color: #8a6200; }
+/* Drag a header's right edge to resize the column, like a spreadsheet. */
+.resizable-grid th { position: sticky; }
+.col-resize {
+  position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 2;
+}
+.col-resize::after {
+  content: ""; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 2px; border-radius: 1px; background: transparent;
+}
+.col-resize:hover::after, .resizing-columns .col-resize::after { background: var(--text-3); }
+body.resizing-columns, body.resizing-columns * { cursor: col-resize !important; user-select: none !important; }
 .ob-wrap { position: relative; display: inline-block; }
 .ob-menu {
   position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); z-index: 30;
