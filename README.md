@@ -13,19 +13,20 @@
 
 Sponsors, judges, speakers — found, sourced, and organized into one space, so your whole team can focus on running the event instead of manually hunting for contacts.
 
-**[▶ Watch the demo](https://youtu.be/wxyIEdSFLwU)** · **[Try it live](https://dig-ai.vercel.app/)** · **[✨ Complete Feature Guide (Features.md)](Features.md)**
+**[▶ Watch the demo](https://youtu.be/wxyIEdSFLwU)** · **[Try it live](https://dig-ai.vercel.app/)** · **[Full feature guide](Features.md)**
 
 </div>
 
 ## Table of contents
 
-- [Full Feature Guide (Features.md)](Features.md)
 - [The problem](#the-problem)
 - [What you get](#what-you-get)
+- [What's new in version 2](#whats-new-in-version-2)
 - [How it works](#how-it-works)
 - [Tech stack](#tech-stack)
 - [Using Dig](#using-dig)
 - [Getting started](#getting-started)
+- [Prototype notes](#prototype-notes)
 - [Vision](#vision)
 - [The team](#the-team)
 
@@ -38,56 +39,52 @@ Everyone starts the same way, and it never gets faster: search Google for the ob
 
 The alternative isn't better. Ask a chatbot instead, and you get a fast, confident answer — with no source, no date, and no way to check if that email still works.
 
-**Dig does the digging. You just ask.** Ask a question in plain language and it runs a real research pipeline: one search, matched to your intent, extracted into structured fields, and checked line by line against the page it came from. Every result is something you can click through and verify yourself — and re-running it later doesn't rebuild the list from scratch, it tells you exactly what changed.
+**Dig does the digging. You just ask.** Ask a question in plain language and it runs a real research pipeline: web searches matched to your intent, extracted into structured fields, and checked line by line against the page they came from. Every result is something you can click through and verify yourself — and re-running it later doesn't rebuild the list from scratch, it tells you exactly what changed.
 
 
 ## What you get
 
 | | |
 |---|---|
-| **Every event, organized** | Sponsors, judges & mentors, jobs, leads and competitors — one dashboard per event. |
-| **Sourced, not guessed** | Every contact traces back to where it came from. |
-| **Never stale** | Re-run a job anytime and see exactly what changed. |
-| **One folder per event** | Every search filed under the event it belongs to — not scattered across sheets and tabs. |
-| **Conflicts, resolved for you** | When data changes, Dig decides what to trust automatically. It only asks you when it's genuinely unsure. |
-| **Export and go** | CSV, Excel, or JSON — ready to hand to your team or plug into your own tools. |
+| **Every event, organized** | Sponsors, judges & speakers, jobs, leads and competitors — one folder each, per event. |
+| **Sourced, not guessed** | Every value traces back to the page it came from. Emails are never guessed. |
+| **Contacts you can use** | LinkedIn, GitHub and work emails, matched by name *and* organisation. |
+| **Never stale** | Re-run a list anytime and see exactly what was added, changed or not found again. |
+| **Conflicts, resolved for you** | Clear changes are settled automatically. Dig only asks you when it's genuinely unsure. |
+| **Work the list** | Track outreach in four states, keep team notes, and draft a first email from sourced facts. |
+| **Toolkit** | Plan an event against its deadline, see insights per list, merge lists, sketch outreach. |
+| **Export and go** | CSV, Excel, JSON, or a plain black-and-white PDF report. |
+
+
+## What's new in version 2
+
+Built on the feedback from the online round:
+
+- **Contacts, not just names.** A contact-finding step after research adds LinkedIn, GitHub and work emails (Hunter.io), only when the name and organisation match. On our speakers list, LinkedIn went from 0 to most of the list.
+- **No more empty columns.** "What they do" and "Expertise" are filled from the person's or company's own page, copied word for word and cited.
+- **Another contact.** For sponsors and leads, add the next person at a company when the first one doesn't reply.
+- **Most complete rows first**, and obvious conflicts settled automatically.
+- **Outreach in four states** (Not contacted, Waiting, Interested, Declined), **Pitch** emails from sourced facts, and a professional PDF report.
+- **Toolkit:** Kickoff (event planner), Lens (insights), Merger (combine lists) and Flow (outreach sketch).
+- **Plain-language help** on every button and column.
+
+The full list is in the [feature guide](Features.md).
 
 
 ## How it works
 
-Dig is a single-search, source-grounded research pipeline. One natural-language question becomes one search, matched to an intent, extracted by an LLM, and checked field-by-field against its own source text before anything is shown to you. No hallucinated data, no unlabeled guesses — every result traces back to a real page, and every re-run resolves what changed instead of duplicating it.
+<p align="center"><img src="docs/pipeline-v2.png" width="900" alt="Dig pipeline: understand, search, extract, ground, enrich, describe, trust, normalize/dedupe/validate, rank, and compare on re-run" /></p>
 
-```
-                          QUERY INPUT
-                 natural-language question in
-                       intent matched
-                      query plan built
-                              │
-                              ▼
-                ┌─────────────┴─────────────┐
-                ▼                           ▼
-          [ MATCHED ]                 [ AMBIGUOUS ]
-                └─────────────┬─────────────┘
-                              ▼
-   COLLECT ──▶ NORMALIZE ──▶ DEDUPE ──▶ VALIDATE ──▶ RANK
-                              │
-                              ▼
-                       CONFLICT CHECK
-              compare recency + authority
-              auto-resolve if confident
-              flag for review if not
-                              │
-                              ▼
-                STRUCTURED, SOURCED RESULT
-```
-
-1. **Collect** — one search call, built from an intent-matched query plan
-2. **Normalize** — raw extracted fields cleaned into a consistent shape
-3. **Dedupe** — identity-matching merges duplicate records, flags near-matches for review
-4. **Validate** — every field checked as a literal, traceable match to its source text
-5. **Rank** — results ordered by strategy (activity, freshness, corroboration, source authority)
-
-On a re-run, disagreeing sources are compared by recency and authority. Confident enough, Dig resolves it automatically. Not confident, it's flagged for you to decide.
+1. **Understand** — an LLM picks the kind of search, the subject and the place.
+2. **Search** — several web searches suited to that kind of search.
+3. **Extract** — pages become structured rows.
+4. **Ground** — a value is kept only if it's on its source page, word for word.
+5. **Enrich** — LinkedIn, GitHub and work emails, matched by name and organisation.
+6. **Describe** — empty "What they do" / "Expertise" filled from the subject's own page, cited.
+7. **Trust** — Jev helps score how far to trust each row.
+8. **Normalize, dedupe, validate** — clean, merge duplicates, check every field.
+9. **Rank** — the most complete rows first.
+10. **On re-run** — compare with the last version: clear changes settle automatically, real disagreements are flagged for you.
 
 
 ## Tech stack
@@ -96,10 +93,10 @@ On a re-run, disagreeing sources are compared by recency and authority. Confiden
 `TypeScript` · `Node.js` · `Express` · `SQLite` · `Zod`
 
 **Frontend**
-`React` · `Vite` · `Tailwind CSS` · `TanStack Query` · `TanStack Table` · `React Router`
+`React` · `Vite` · `Tailwind CSS` · `TanStack Query` · `TanStack Table` · `React Router` · `jsPDF`
 
 **Research pipeline**
-`Tavily` (search) · `Groq` / `OpenAI` (extraction & reasoning)
+`Tavily` (search) · `Groq` (extraction & reasoning) · `Hunter.io` (work emails) · `GitHub API` (profiles) · `Jev via OpenRouter` (trust decisions)
 
 **Testing**
 `Vitest`
@@ -113,27 +110,27 @@ Create an account to get your own workspace — every event and search you run i
 <p align="center"><img src="docs/screenshots/step-1-login.png" width="700" alt="" /></p>
 
 **2. Create an event**
-Every search lives inside an event — a hackathon, a conference, a talk. Start by creating one from your dashboard.
+Every search lives inside an event — a hackathon, a conference, a talk. Its README holds the dates, targets and deadlines, and is used when drafting pitches.
 
 <p align="center"><img src="docs/screenshots/step-2-create-event.png" width="700" alt="" /></p>
 
 **3. Ask your question**
-Inside the event, click **New Query** and ask in plain language. Dig works out what you're looking for — sponsors, judges & mentors, jobs, leads or competitors — and files the results into the matching folder.
+Inside the event, click **Got Something Else?** and ask in plain language. Dig works out what you're looking for and files the results into the matching folder.
 
 <p align="center"><img src="docs/screenshots/step-3-ask-question.png" width="700" alt="" /></p>
 
 **4. Review sourced results**
-Every result comes with a source you can click through and verify — nothing shown is a guess. As your team works the list, mark each row ✓ interested or ✗ declined and leave a short note so the next person knows where things stand.
+Every row links to its source. The most complete rows come first, with LinkedIn, GitHub and email where they were found. Mark each row Not contacted, Waiting, Interested or Declined, leave a note, and use **Pitch** to draft a first email or **Another** to find a second person at the same company.
 
 <p align="center"><img src="docs/screenshots/step-4-review-results.png" width="700" alt="" /></p>
 
 **5. Re-run and resolve conflicts**
-Run the same search again later. Dig auto-resolves what it's confident about and only asks you when a source disagrees and it can't tell why.
+Run the same search again later. Dig settles what it's confident about and only asks you when a source disagrees and it can't tell why.
 
 <p align="center"><img src="docs/screenshots/step-5-resolve-conflicts.png" width="700" alt="" /></p>
 
-**6. Export or generate a report**
-Download the results as CSV, Excel, or JSON to hand off to your team — or generate a written report that cites every source and explains why the results were ranked the way they were.
+**6. Export, or open the Toolkit**
+Download the results as CSV, Excel, JSON or a PDF report. Or open **Toolkit**: plan the event with Kickoff, read a list's insights in Lens, or combine lists in Merger.
 
 <p align="center"><img src="docs/screenshots/step-6-export-report.png" width="700" alt="" /></p>
 
@@ -155,23 +152,40 @@ npm install
 
 cp .env.example .env
 # Required in .env:
-#   TAVILY_API_KEY=...        (web search — tavily.com)
+#   TAVILY_API_KEY=...          (web search — tavily.com)
 #   LLM_PROVIDER=groq
-#   LLM_API_KEY=...           (console.groq.com)
+#   LLM_API_KEY=...             (console.groq.com)
 #   LLM_MODEL=openai/gpt-oss-120b
-# Everything else has working defaults.
+# Optional (Dig falls back gracefully without them):
+#   LLM_EXTRA_MODELS=openai/gpt-oss-20b   (a second model with its own rate limit)
+#   GROQ_API_KEY_FALLBACK=...             (backup Groq keys, up to 5)
+#   HUNTER_API_KEY=...                    (work emails — hunter.io, free plan 50/month)
+#   HUNTER_MAX_CALLS_PER_RUN=8
+#   GITHUB_TOKEN=...                      (GitHub profile lookups)
+#   JEV_API_KEY=...                       (trust decisions — an OpenRouter key)
+#   ENRICHMENT_TIMEOUT_MS=60000
 
 npm run dev
 ```
 
 Open [localhost:5173](http://localhost:5173), sign up, and start digging. Your account, events and results are stored in `data/dig.db` and survive restarts.
 
-This starts the API and web app together — the web app on Vite's dev server, the API on Express with `tsx watch`.
+This starts the API and web app together — the web app on Vite's dev server, the API on Express with `tsx watch`. Run the tests with `npm test` and type-check with `npm run typecheck`.
 
 ### Deploying
 
-- **API → [Railway](https://railway.app)** (a normal always-on Node server, so live searches can run in the background). Build from the repo root with start command `npm run db:migrate && npm start -w @dig/api`, attach a volume at `/data`, and set `DATABASE_PATH=/data/dig.db` plus the keys above.
+- **API → [Railway](https://railway.app)** (a normal always-on Node server, so live searches can run in the background). Build from the repo root with start command `npm run db:migrate && npm start -w @dig/api`, attach a volume at `/data`, and set `DATABASE_PATH=/data/dig.db` plus the keys above. The database upgrades itself on start; it only ever adds tables and columns.
 - **Web → [Vercel](https://vercel.com)** from the repo root — build settings live in `vercel.json`, which also forwards `/api/*` to the Railway API, so the site and API share one domain and need no extra environment variables.
+
+
+## Prototype notes
+
+Dig is a hackathon prototype. Two parts are deliberately mockups:
+
+- **Flow** draws and runs an outreach plan and pauses for your approval, but **does not send** emails or messages.
+- **Pricing checkout** shows the payment flow, but **no payment is processed**; choosing a plan doesn't charge you.
+
+Search results also vary a little between runs, because the pages the web search returns change.
 
 
 ## Vision

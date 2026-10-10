@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowUpDown,
   AlertTriangle,
   Check,
   ChevronDown,
@@ -42,6 +43,8 @@ import {
   type JobProgress,
 } from "../api";
 import { AppWindow, type Crumb } from "../components/Shell";
+import { Tip } from "../components/Tip";
+import { columnHelp, GLOSSARY, LIST_HELP } from "../help";
 import { notify, notifyError } from "../toast";
 import { downloadDatasetPdf } from "./dataset-pdf-report";
 
@@ -757,16 +760,18 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             {job && <div className="q">Query — “{job.query}”</div>}
           </div>
           <div style={{ display: "flex", gap: 8, position: "relative", alignItems: "center" }}>
-            <button
-              className="btn"
-              disabled={!version}
-              onClick={(click) => {
-                click.stopPropagation();
-                setDownloadOpen((open) => !open);
-              }}
-            >
-              <Download size={14} /> Download <ChevronDown size={13} />
-            </button>
+            <Tip text={LIST_HELP.download}>
+              <button
+                className="btn"
+                disabled={!version}
+                onClick={(click) => {
+                  click.stopPropagation();
+                  setDownloadOpen((open) => !open);
+                }}
+              >
+                <Download size={14} /> Download <ChevronDown size={13} />
+              </button>
+            </Tip>
             {downloadOpen && (
               <div className="menu" style={{ top: 32, right: "auto", left: 0 }}>
                 <a href={exportHref("csv")} download>
@@ -779,9 +784,9 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   <button>JSON (.json)</button>
                 </a>
                 <div className="menu-sep" />
-                <button onClick={() => void generatePdfReport()} disabled={report.busy} title="Generate publication-grade executive PDF dossier">
+                <button onClick={() => void generatePdfReport()} disabled={report.busy}>
                   <FileText size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 6 }} />
-                  {report.busy ? "Generating PDF…" : "Executive Report (.pdf)"}
+                  {report.busy ? "Generating PDF…" : "PDF report (.pdf)"}
                 </button>
               </div>
             )}
@@ -790,60 +795,84 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 {report.busy ? "Generating report…" : report.error}
               </div>
             )}
-            <button className="btn" disabled={running || runAgain.isPending} onClick={() => runAgain.mutate()}>
-              <RotateCw size={14} className={running ? "spin" : undefined} /> {running ? "Running…" : "Run again"}
-            </button>
-            <button
-              className="btn"
-              disabled={pending.length === 0}
-              onClick={() => {
-                setTab("review");
-                const first = records.find((record) => (conflictsFor.get(record.id) ?? []).some((c) => c.status === "PENDING"));
-                if (first) setPanel({ kind: "record", key: first.canonicalEntityId });
-              }}
-            >
-              <Play size={12} fill="currentColor" /> Review conflicts
-            </button>
+            <Tip text={running ? LIST_HELP.running : LIST_HELP.runAgain}>
+              <button className="btn" disabled={running || runAgain.isPending} onClick={() => runAgain.mutate()}>
+                <RotateCw size={14} className={running ? "spin" : undefined} /> {running ? "Running…" : "Run again"}
+              </button>
+            </Tip>
+            <Tip text={pending.length ? LIST_HELP.reviewConflicts : LIST_HELP.noConflicts}>
+              <button
+                className="btn"
+                disabled={pending.length === 0}
+                onClick={() => {
+                  setTab("review");
+                  const first = records.find((record) => (conflictsFor.get(record.id) ?? []).some((c) => c.status === "PENDING"));
+                  if (first) setPanel({ kind: "record", key: first.canonicalEntityId });
+                }}
+              >
+                <Play size={12} fill="currentColor" /> Review conflicts
+              </button>
+            </Tip>
           </div>
         </div>
 
         {version && (
           <div className="statsbar">
-            <button className={`pill${pending.length ? "" : " ok"}`} onClick={() => setTab("review")} style={{ cursor: "pointer" }}>
-              <span className="d" />
-              {pending.length
-                ? `${pending.length} record${pending.length === 1 ? " needs" : "s need"} your review`
-                : "No conflicts need your review"}
-              {autoResolved.length > 0 && ` · ${autoResolved.length} ${pending.length ? "more were" : ""} auto-resolved`}
-            </button>
+            <Tip text={`${pending.length ? GLOSSARY.needsReview : LIST_HELP.noConflicts}${autoResolved.length ? ` ${GLOSSARY.autoResolved}` : ""}`}>
+              <button className={`pill${pending.length ? "" : " ok"}`} onClick={() => setTab("review")} style={{ cursor: "pointer" }}>
+                <span className="d" />
+                {pending.length
+                  ? `${pending.length} record${pending.length === 1 ? " needs" : "s need"} your review`
+                  : "No conflicts need your review"}
+                {autoResolved.length > 0 && ` · ${autoResolved.length} ${pending.length ? "more were" : ""} auto-resolved`}
+              </button>
+            </Tip>
             <span className="sep" />
-            <span>
-              <b>{version.rowCount}</b> records from <b>{version.sourceCount}</b> sources
-            </span>
-            {version.qualityScore !== null && (
-              <span>
-                <b>{Math.round(version.qualityScore)}</b> quality score
+            <Tip text={`${LIST_HELP.records} ${GLOSSARY.sources}`}>
+              <span tabIndex={0}>
+                <b>{version.rowCount}</b> records from <b>{version.sourceCount}</b> sources
               </span>
+            </Tip>
+            {version.qualityScore !== null && (
+              <Tip text={GLOSSARY.qualityScore}>
+                <span tabIndex={0}>
+                  <b>{Math.round(version.qualityScore)}</b> quality score
+                </span>
+              </Tip>
             )}
             {version.avgConfidence !== null && (
-              <span>
-                <b>{version.avgConfidence.toFixed(2)}</b> avg confidence
-              </span>
+              <Tip text={`Average confidence across rows. ${GLOSSARY.confidence}`}>
+                <span tabIndex={0}>
+                  <b>{Math.round(version.avgConfidence * 100)}%</b> avg confidence
+                </span>
+              </Tip>
             )}
-            <span>
-              <b>v{version.versionNumber}</b> · run {when(version.createdAt)}
-            </span>
+            <Tip text={`${GLOSSARY.version} ${GLOSSARY.run}`}>
+              <span tabIndex={0}>
+                <b>v{version.versionNumber}</b> · run {when(version.createdAt)}
+              </span>
+            </Tip>
             <span className="diff">
               {diff && !diff.firstVersion ? (
                 <>
-                  <span style={{ color: "#248a3d" }}>+{diff.added.length} added</span>
-                  <span>{diff.changed.length} changed</span>
-                  <span>{diff.removed.length} dropped</span>
+                  <Tip text={LIST_HELP.added}>
+                    <span tabIndex={0} style={{ color: "#248a3d" }}>+{diff.added.length} added</span>
+                  </Tip>
+                  <Tip text={LIST_HELP.changed}>
+                    <span tabIndex={0}>{diff.changed.length} changed</span>
+                  </Tip>
+                  <Tip text={LIST_HELP.dropped}>
+                    <span tabIndex={0}>{diff.removed.length} not found again</span>
+                  </Tip>
                 </>
               ) : (
-                <span>First version</span>
+                <Tip text={LIST_HELP.firstVersion}>
+                  <span tabIndex={0}>First version</span>
+                </Tip>
               )}
-              <a onClick={() => setPanel({ kind: "diff" })}>Full diff ›</a>
+              <Tip text={LIST_HELP.fullDiff}>
+                <a onClick={() => setPanel({ kind: "diff" })} tabIndex={0} role="button">Full diff ›</a>
+              </Tip>
             </span>
           </div>
         )}
@@ -903,18 +932,29 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                       ...(reviewCount > 0 ? [["review", "Needs review", reviewCount] as const] : []),
                     ] as const
                   ).map(([key, label, count]) => (
-                    <button key={key} className={tab === key ? "on" : undefined} onClick={() => setTab(key as Tab)}>
-                      {label}
-                      <span className="n">{count}</span>
-                    </button>
+                    <Tip key={key} text={({
+                      all: LIST_HELP.tabAll,
+                      contacted: LIST_HELP.tabContacted,
+                      interested: LIST_HELP.tabInterested,
+                      waiting: LIST_HELP.tabWaiting,
+                      declined: LIST_HELP.tabDeclined,
+                      uncontacted: LIST_HELP.tabNotContacted,
+                      review: LIST_HELP.tabNeedsReview,
+                    } as Record<string, string>)[key] ?? label}>
+                      <button className={tab === key ? "on" : undefined} onClick={() => setTab(key as Tab)}>
+                        {label}
+                        <span className="n">{count}</span>
+                      </button>
+                    </Tip>
                   ))}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <label className="search">
                     <Search size={14} />
-                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${view.noun}…`} />
+                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${view.noun}…`} aria-label={LIST_HELP.search} />
                   </label>
                   {!selected && (
+                    <Tip text={LIST_HELP.evidence}>
                     <button
                       className="btn"
                       onClick={() => {
@@ -923,7 +963,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           : records[0];
                         if (target) setPanel({ kind: "record", key: target.canonicalEntityId });
                       }}
-                      title="Open Evidence Sidebar"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -936,8 +975,9 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                       }}
                     >
                       <PanelRightOpen size={13} />
-                      <span>Evidence Sidebar</span>
+                      <span>Show details</span>
                     </button>
+                    </Tip>
                   )}
                 </div>
               </div>
@@ -947,6 +987,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   <thead>
                     <tr>
                       <th style={{ width: 34, textAlign: "center" }}>
+                        <Tip text={LIST_HELP.selectAll}>
                         <input
                           type="checkbox"
                           aria-label="Select all rows"
@@ -957,8 +998,13 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           onChange={toggleSelectAll}
                           style={{ cursor: "pointer" }}
                         />
+                        </Tip>
                       </th>
-                      <th className="n">#</th>
+                      <th className="n">
+                        <Tip text={LIST_HELP.rank}>
+                          <span tabIndex={0}>#</span>
+                        </Tip>
+                      </th>
                       {view.columns.map(([key, label]) => ({ key, label })).map((column, index) => (
                         <Fragment key={column.key}>
                         <th
@@ -973,15 +1019,17 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                             )
                           }
                         >
-                          {column.label}
+                          <Tip text={`${columnHelp(job?.blueprint.intent ?? "", column.key) ?? column.label} Click to sort.`}>
+                            <span tabIndex={0}>{column.label}</span>
+                          </Tip>
                           {sort?.key === column.key ? (
                             <span className="f">{sort.dir === 1 ? "▲" : "▼"}</span>
                           ) : (
-                            <Filter size={11} className="f" />
+                            <ArrowUpDown size={11} className="f" aria-hidden />
                           )}
                           <span
                             className="col-resize"
-                            title="Drag to resize. Double-click to reset."
+                            title={LIST_HELP.resize}
                             onMouseDown={startResize(column.key)}
                             onClick={(click) => click.stopPropagation()}
                             onDoubleClick={(click) => {
@@ -990,11 +1038,25 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                             }}
                           />
                         </th>
-                        {index === 0 && <th title="Who has been contacted — click a row’s mark to change it">Outreach</th>}
+                        {index === 0 && (
+                          <th>
+                            <Tip text={LIST_HELP.outreach}>
+                              <span tabIndex={0}>Outreach</span>
+                            </Tip>
+                          </th>
+                        )}
                         </Fragment>
                       ))}
-                      <th>Note</th>
-                      <th style={{ width: 68, textAlign: "center" }}>Action</th>
+                      <th>
+                        <Tip text={LIST_HELP.note}>
+                          <span tabIndex={0}>Note</span>
+                        </Tip>
+                      </th>
+                      <th style={{ width: 68, textAlign: "center" }}>
+                        <Tip text={multiContact ? `${LIST_HELP.pitch} ${LIST_HELP.another}` : pitchable ? LIST_HELP.pitch : "Actions for this row."}>
+                          <span tabIndex={0}>Action</span>
+                        </Tip>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1102,23 +1164,24 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           <NoteCell note={mark?.note ?? ""} who={mark?.updatedBy ?? null} onSave={(note) => void setOutreach(record.canonicalEntityId, { note })} />
                           <td style={{ textAlign: "center" }}>
                             {pitchable && (
-                              <button
-                                className="btn"
-                                style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
-                                title="Write a first-contact email"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPitchModalRecord(record);
-                                }}
-                              >
-                                <Mail size={11} /> Pitch
-                              </button>
+                              <Tip text={LIST_HELP.pitch}>
+                                <button
+                                  className="btn"
+                                  style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPitchModalRecord(record);
+                                  }}
+                                >
+                                  <Mail size={11} /> Pitch
+                                </button>
+                              </Tip>
                             )}
                             {multiContact && (
+                              <Tip text={LIST_HELP.another}>
                               <button
                                 className="btn"
                                 style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4, marginLeft: 4 }}
-                                title="Find another person at this company"
                                 disabled={findAnother.isPending}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1127,6 +1190,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                               >
                                 <UserPlus size={11} /> Another
                               </button>
+                              </Tip>
                             )}
                           </td>
                         </tr>
@@ -1646,12 +1710,11 @@ function RecordPanel(props: {
             <ShieldCheck size={12} color="#10b981" />
             <span>Proof &amp; Evidence Dossier</span>
             <span className="eyebrow-sep">·</span>
-            <span
-              style={{ color: "var(--text)", textTransform: "none", letterSpacing: 0 }}
-              title="Confidence: how strongly this row is sourced (source authority, number of sources, freshness)"
-            >
+            <Tip text={statusWord === "Needs review" ? GLOSSARY.needsReview : LIST_HELP.verifiedBadge}>
+            <span tabIndex={0} style={{ color: "var(--text)", textTransform: "none", letterSpacing: 0 }}>
               <b>{statusWord}</b> {Math.round(veracity * 100)}%
             </span>
+            </Tip>
           </div>
           <button
             className="sidebar-close-btn"

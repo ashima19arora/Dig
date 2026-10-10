@@ -18,6 +18,7 @@ import { Profile } from "./pages/Profile";
 import { Stack } from "./pages/Stack";
 import { WhyDig } from "./pages/WhyDig";
 import { RequireAuth } from "./session";
+import { EscapeCloses } from "./components/EscapeCloses";
 
 function StandaloneJobBoard() {
   const { jobId = "" } = useParams();
@@ -28,6 +29,8 @@ const app = (screen: ReactNode) => <RequireAuth>{screen}</RequireAuth>;
 
 export function App() {
   return (
+    <>
+    <EscapeCloses />
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/why" element={<WhyDig />} />
@@ -49,5 +52,6 @@ export function App() {
       <Route path="/jobs/:jobId" element={app(<StandaloneJobBoard />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }

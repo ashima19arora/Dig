@@ -60,6 +60,7 @@ import { useSearchParams } from "react-router-dom";
 import "@xyflow/react/dist/style.css";
 import { api, datasetChoices, type JobSummary } from "../api";
 import { AppWindow, useAppearance } from "../components/Shell";
+import { PasswordInput } from "../components/PasswordInput";
 import { ROOT_CRUMB } from "../events";
 
 export interface CustomizedOutreachDrafts {
@@ -1578,8 +1579,7 @@ function FlowEditor() {
                     </div>
                     <label className="field">
                       Resend API Key
-                      <input
-                        type="password"
+                      <PasswordInput
                         autoComplete="off"
                         value={gatewayKeys.email}
                         placeholder={powerQ.data?.email ? "Saved. Enter a new key to replace it." : "re_1234567890abcdef..."}
@@ -1602,8 +1602,7 @@ function FlowEditor() {
                     </div>
                     <label className="field">
                       Meta Cloud API System User Bearer Token / Graph Token
-                      <input
-                        type="password"
+                      <PasswordInput
                         autoComplete="off"
                         value={gatewayKeys.whatsapp}
                         placeholder={powerQ.data?.whatsapp ? "Saved. Enter a new token to replace it." : "EAAG... (Graph API v21.0 Access Token)"}
@@ -1626,8 +1625,7 @@ function FlowEditor() {
                     </div>
                     <label className="field">
                       LinkedIn OAuth Access Token / Client Secret
-                      <input
-                        type="password"
+                      <PasswordInput
                         autoComplete="off"
                         value={gatewayKeys.linkedin}
                         placeholder={powerQ.data?.linkedin ? "Saved. Enter a new token to replace it." : "AQV... (LinkedIn OAuth 2.0 Token)"}

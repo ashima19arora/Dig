@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppWindow, FolderTile, NewFolderIcon } from "../components/Shell";
+import { Tip } from "../components/Tip";
 import { createEvent, ROOT_CRUMB, updateEvent, useEvents, type DigEvent } from "../events";
 import { EventSheet } from "./EventSheet";
 
@@ -40,10 +41,12 @@ export function Dashboard() {
                 <EventTile key={event.id} event={event} />
               ))}
               {view !== "archived" && !loading && (
-                <button className="folder new" onClick={() => setCreating(true)}>
-                  <NewFolderIcon />
-                  <span className="name">New Event</span>
-                </button>
+                <Tip text="Create an event: a hackathon, fest or project. It comes with folders for each kind of search.">
+                  <button className="folder new" onClick={() => setCreating(true)}>
+                    <NewFolderIcon />
+                    <span className="name">New Event</span>
+                  </button>
+                </Tip>
               )}
             </div>
             {!loading && view !== "recent" && shown.length === 0 && (
@@ -70,6 +73,7 @@ export function Dashboard() {
 
 function EventTile({ event }: { event: DigEvent }) {
   return (
+    <Tip text={`Open ${event.name}${event.date ? ` (${event.date})` : ""}. Use ··· to star, rename or archive it.`}>
     <FolderTile
       to={`/events/${event.id}`}
       name={event.name}
@@ -83,5 +87,6 @@ function EventTile({ event }: { event: DigEvent }) {
         { label: event.archived ? "Unarchive" : "Archive", onClick: () => void updateEvent(event.id, { archived: !event.archived }) },
       ]}
     />
+    </Tip>
   );
 }

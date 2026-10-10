@@ -26,6 +26,7 @@ import { api, type DatasetRecord, type JobSummary } from "../api";
 import { FOLDERS, folderLabel, useEvents, type DigEvent, type FolderKey } from "../events";
 import { useSession } from "../session";
 import { GUIDE_URL } from "./Marketing";
+import { Tip } from "./Tip";
 
 // ---------------------------------------------------------------------------
 // 1. Comprehensive Platform Knowledge Base (RAG Documents)
@@ -42,176 +43,142 @@ export interface KnowledgeDoc {
 
 export const KNOWLEDGE_BASE: KnowledgeDoc[] = [
   {
-    id: "veracity-vs-guessed-emails",
+    id: "sourced-not-guessed",
     category: "philosophy",
-    title: "100% Veracity Principle vs. Hallucinated / Guessed Emails",
+    title: "Why every value is sourced, and why some rows have no email",
     keys: [
-      "veracity", "hallucinat", "why veracity", "why no email", "missing email", "no contact",
-      "guess email", "fake email", "pattern", "paytm", "phonepe", "reputation", "evidence",
-      "why evidence", "proof", "accuracy", "grounded", "real data"
+      "veracity", "confidence", "hallucinat", "why no email", "missing email", "no contact", "guess email",
+      "fake email", "pattern", "evidence", "proof", "accuracy", "grounded", "real data", "source", "trust",
     ],
     summary:
-      "Dig never generates or guesses probabilistic email patterns (e.g. first.last@domain.com). Guessing burns your domain sender reputation, triggers spam blacklists, and destroys dealmaker credibility. Instead, Dig requires 100% word-for-word citations directly from live indexed web pages.",
+      "Dig only shows what it can copy word for word from a real web page, and every value links back to that page. It never guesses an email like first.last@company.com, because guessed addresses bounce and hurt your reputation. If no page lists an email, the row says so instead of inventing one.",
     bullets: [
-      "Zero Email Hallucination: Every contact point or email shown is explicitly quoted from a live, verifiable URL.",
-      "The Paytm Office Principle: Guessing an address and pitching competitors burns partner trust permanently. Authentic provenance builds instant rapport.",
-      "Verified Discovery: Once you identify the verified decision maker and sponsorship history, reaching out via 1-click Search Leads or LinkedIn takes seconds without risking domain reputation.",
+      "Click any row to open its side panel and see the exact pages behind each value.",
+      "The % next to Verified is the confidence: more pages, more official pages and newer pages score higher.",
+      "No email? Check the LinkedIn column, or use Another to find a different person at the company.",
     ],
-    actionLink: { label: "Learn About Veracity", to: "/why-dig" },
+    actionLink: { label: "Why Dig works this way", to: "/why-dig" },
   },
   {
-    id: "five-intelligence-archetypes",
+    id: "search-types",
     category: "archetypes",
-    title: "The 5 Core Intelligence Archetypes & Research Folders",
+    title: "What Dig can find",
     keys: [
-      "archetypes", "folders", "supported", "what can dig find", "types", "kinds of search",
-      "sponsors", "judges", "mentors", "jobs", "leads", "competitors", "intents"
+      "folders", "supported", "what can dig find", "types", "kinds of search", "sponsors", "judges", "mentors",
+      "speakers", "jobs", "internship", "leads", "competitors", "vendors", "companies", "coming soon",
     ],
     summary:
-      "Dig organizes research into five dedicated intelligence archetypes. When you submit a plain-English query, the LLM blueprint parser classifies your intent and automatically files the results into the matching folder.",
+      "Ask in your own words and Dig picks the right kind of search, then files the results in the matching folder of your event.",
     bullets: [
-      "1. Sponsors: Identifies corporate, tech & community sponsors, historical sponsorship tiers (Title, Gold, Silver), contact points, and corporate portals.",
-      "2. Judges & Mentors: Surfaces academic researchers, engineering leaders, and past jury members with specific domain expertise.",
-      "3. Jobs: Live hiring listings, compensation benchmarks, engineering stacks, and verified direct application paths.",
-      "4. Leads: High-intent B2B target companies, D2C brands, and verified decision-maker contact paths.",
-      "5. Competitors: Comprehensive market landscape analysis, software alternatives, pricing teardowns, and feature differentials.",
+      "Sponsors: companies that sponsor or partner with events, with their tier and a contact where one is published.",
+      "Judges, mentors and speakers: people who have judged, mentored or spoken at events, with their expertise and LinkedIn.",
+      "Jobs: open roles and internships at named companies.",
+      "Leads: companies you could sell to. Questions about vendors, suppliers or companies in general also run here.",
+      "Competitors: alternatives to a product, with pricing where a page states it.",
+      "Events, funding and market trends are coming soon.",
     ],
-    actionLink: { label: "View Workspace Folders", to: "/dashboard" },
+    actionLink: { label: "Open your events", to: "/dashboard" },
   },
   {
-    id: "jev-proof-and-conflict-resolution",
-    category: "veracity",
-    title: "Jev Proof Engine & Conflict Resolution ('Needs Review')",
-    keys: [
-      "needs review", "conflict", "jev", "proof", "hash", "source", "diff", "keep new",
-      "keep previous", "re-run", "rerun", "refresh", "changes", "disagree", "audit"
-    ],
-    summary:
-      "When a search is re-run, Dig compares every field with prior snapshots. When web sources disagree or a verified change is detected, Dig marks the row 'Needs Review' instead of guessing.",
-    bullets: [
-      "Audit Trail & Provenance: Click any row to inspect the exact quoted sentence, the source URL, and the timestamp it was verified.",
-      "Conflict Review Modal: Click 'Review conflicts' to inspect Previous vs. New values side-by-side, then 1-click 'Keep new' or 'Keep previous'.",
-      "Diff Highlighting: Visual badges show exactly what was added, changed, or dropped across runs.",
-    ],
-  },
-  {
-    id: "upi-utr-direct-settlement",
-    category: "payments",
-    title: "UPI Direct Settlement & 12-Digit UTR Verification",
-    keys: [
-      "utr", "upi", "payment", "pricing", "qr code", "qr scanner", "paytm", "gpay", "phonepe",
-      "bank ledger", "reconcil", "11900", "399", "scale", "direct settlement", "npci", "fee"
-    ],
-    summary:
-      "Dig incorporates a production-grade direct UPI payment workflow designed specifically for Indian startups and SMBs, bypassing 2–3% gateway aggregation fees and 72-hour payout lockups via direct NPCI bank transfer.",
-    bullets: [
-      "Direct VPA Rail: Scan the high-resolution QR scanner with Paytm, PhonePe, or GPay to transfer directly to 9953314375@ptyes (MAYANK GARG).",
-      "12-Digit Bank UTR: Submit your bank reference / UTR number for instant automated ledger reconciliation.",
-      "In-Modal Billing Toggle: Switch seamlessly between Monthly Flexible and Annual Prepaid (17% OFF) right in the macOS checkout sheet.",
-      "Scale Capacity Selector: For high-volume teams, scale from 1x Standard (250 runs) up to 5x Enterprise (1,250 runs).",
-      "Digital Receipt: Generates an authentic macOS digital transaction voucher with 1-click PDF printing.",
-    ],
-    actionLink: { label: "Open Pricing & Plans", to: "/pricing" },
-  },
-  {
-    id: "outreach-and-multichannel-pitch",
+    id: "contacts",
     category: "outreach",
-    title: "Multi-Channel Outbound & CRM Human Gate",
-    keys: [
-      "outreach", "crm", "email", "whatsapp", "linkedin", "inmail", "pitch", "resend",
-      "interested", "declined", "not contacted", "notes", "human gate"
-    ],
+    title: "LinkedIn, GitHub and finding another contact",
+    keys: ["linkedin", "github", "contact", "another", "reach", "profile", "check", "email", "hunter", "decision maker"],
     summary:
-      "Dig pairs verified contact paths with multi-channel outreach drafting across Email, WhatsApp Business, and LinkedIn InMail with human-in-the-loop review.",
+      "After a search, Dig looks for each row's LinkedIn, GitHub and work email, and only keeps one when both the name and the organisation match.",
     bullets: [
-      "Evidence-Driven Pitch Copy: Generates tailored pitch angles citing the exact reason a company sponsors or matches your brief.",
-      "CRM Tracking: 1-click toggle between Not Contacted → Interested → Declined with persistent team notes.",
-      "Zero Runs Spent on CRM: Editing outreach marks, adding tags, or browsing your stored list costs 0 runs.",
+      "A faded LinkedIn link marked 'check' matched the name only. Confirm it before writing.",
+      "For sponsors and leads, the Another button adds the next person at that company, right under the first one.",
+      "If nothing was found, the LinkedIn column offers a one-click LinkedIn search instead.",
     ],
   },
   {
-    id: "visual-workflow-canvas",
+    id: "reruns-and-review",
+    category: "veracity",
+    title: "Running again, changes and 'Needs review'",
+    keys: ["needs review", "conflict", "jev", "diff", "re-run", "rerun", "run again", "refresh", "changes", "dropped", "added", "auto-resolved", "disagree"],
+    summary:
+      "Running a search again checks the web for what has changed. Dig shows what was added, what changed, and what was not found this time, without duplicating rows.",
+    bullets: [
+      "When two pages disagree, Dig keeps the clearly better value itself, for example the fuller one, the newer one or the more official one.",
+      "Only when it truly can't tell does a row say Needs review. Click Review conflicts to choose.",
+      "'Not found this time' does not prove a row is gone; the pages searched were different.",
+    ],
+  },
+  {
+    id: "outreach-and-pitch",
+    category: "outreach",
+    title: "Tracking outreach and writing a pitch",
+    keys: ["outreach", "crm", "pitch", "email draft", "interested", "declined", "waiting", "not contacted", "notes", "contacted"],
+    summary:
+      "Mark where you are with every row and keep short notes for your team. The tabs above the table count each state.",
+    bullets: [
+      "Four states: Not contacted, Waiting (they'll get back to you), Interested and Declined.",
+      "Pitch writes a short first email using only facts Dig found, plus your event's README and your name and role. Edit it, then copy it or open it in your email app.",
+      "Dig does not send emails for you.",
+    ],
+  },
+  {
+    id: "toolkit",
     category: "workflows",
-    title: "Visual Workflow Canvas & Node Automation",
-    keys: [
-      "flow", "canvas", "reactflow", "visual workflow", "pipeline", "nodes", "wiring",
-      "triggers", "enrichers", "dispatchers", "automation"
-    ],
-    summary:
-      "Dig includes an interactive ReactFlow visual node graph at /flow to design and trace end-to-end automated research and outreach pipelines.",
+    title: "Toolkit: Kickoff, Lens, Merger and Flow",
+    keys: ["toolkit", "agents", "kickoff", "plan", "planner", "lens", "insight", "merger", "merge", "combine", "flow", "canvas", "workflow", "mission"],
+    summary: "Toolkit holds four helpers that work on your events and lists.",
     bullets: [
-      "Trigger Nodes: Schedule automated calendar refreshes or listen for newly announced hackathon briefs.",
-      "Enricher Nodes: Chain Tavily web searches and LLM extraction filters.",
-      "Dispatcher Nodes: Route verified contacts through Resend or WhatsApp gateways.",
-      "Live Execution Tracing: Watch wires pulse as data flows through condition nodes in real time.",
+      "Kickoff: describe your event and deadline; it writes a dated plan and starts the right searches from it.",
+      "Lens: a few plain insights for one list, plus a PDF.",
+      "Merger: combine several lists into one spreadsheet, with duplicates merged.",
+      "Flow: draw an outreach plan step by step, with your approval at the end. It's a prototype and does not send messages yet.",
     ],
-    actionLink: { label: "Open Workflow Canvas", to: "/flow" },
+    actionLink: { label: "Open Toolkit", to: "/agents" },
   },
   {
-    id: "research-metering-and-plans",
-    category: "metering",
-    title: "Predictable Research Metering & Quotas",
-    keys: [
-      "meter", "allowance", "quota", "runs", "lists", "events", "rows", "starter", "pro",
-      "scale", "cost", "how many runs", "limits", "pricing plan"
-    ],
-    summary:
-      "Dig bills the research output rather than individual seat licenses. Opening datasets, browsing records, filtering, and exporting never spend collection runs.",
-    bullets: [
-      "Events: Dedicated workspace slots for events or research briefs. Archiving frees the slot immediately.",
-      "Curated Lists: Saved datasets in your folders. Re-opening a list you already hold is 100% free.",
-      "Collection Runs: Live web execution bundles combining Tavily search and Gemini parsing.",
-      "Starter (Free Forever): 5 live runs/mo, 2 curated lists, 1 active event.",
-      "Pro Researcher (₹399/mo): 40 runs/mo, 20 curated lists, 6 active events, multi-channel pitch drafting.",
-      "Scale & Agency (₹1,190/mo): 250 runs/mo, 100 curated lists, unlimited active events.",
-    ],
-    actionLink: { label: "Review All Tiers", to: "/pricing" },
-  },
-  {
-    id: "data-exports-and-reports",
+    id: "exports",
     category: "exports",
-    title: "1-Click Data Exports (CSV, Excel, JSON) & Written Intelligence Reports",
-    keys: [
-      "export", "download", "csv", "excel", "xlsx", "json", "report", "spreadsheet", "share"
-    ],
-    summary:
-      "Every curated list can be instantly downloaded in multiple formats or compiled into a professional written research intelligence brief.",
+    title: "Downloads and reports",
+    keys: ["export", "download", "csv", "excel", "xlsx", "json", "report", "pdf", "spreadsheet", "share"],
+    summary: "Every list can be downloaded from the Download button above the table.",
     bullets: [
-      "1-Click CSV: Download standard flat files compatible with HubSpot, Salesforce, or Google Sheets.",
-      "Excel (.xlsx) & JSON: Structured downloads preserving contact channel confidence and evidence IDs.",
-      "Written Intelligence Reports: Automatically synthesizes executive summaries citing every live source.",
+      "Excel, CSV or JSON for spreadsheets and other tools, including your outreach status and notes.",
+      "A black-and-white PDF report with every row and its sources.",
     ],
   },
   {
-    id: "search-pipeline-speed",
-    category: "general",
-    title: "Search Pipeline Speed, Streaming & Execution",
-    keys: [
-      "how long", "slow", "speed", "stuck", "streaming", "cancel", "progress bar", "execution", "tavily"
-    ],
-    summary:
-      "Live searches take between 10 to 90 seconds depending on query breadth. Sponsor and lead lookups take the longest because Dig actively validates company portals and contact points.",
+    id: "plans",
+    category: "metering",
+    title: "Plans",
+    keys: ["pricing", "plan", "price", "cost", "starter", "pro", "scale", "upgrade", "payment", "upi", "utr", "quota", "limits"],
+    summary: "The Pricing page lists the plans and what each includes. Opening, filtering and downloading lists you already have never uses up searches.",
     bullets: [
-      "Real-Time Progress: The progress bar streams live updates via Server-Sent Events (SSE).",
-      "Safe Cancelation: You can cancel a running search at any point without corrupting existing records.",
-      "Resilient Fallbacks: If web connectivity drops, 1-click 'Run again' resumes where it left off.",
+      "A search uses one run each time you start it or run it again.",
+      "Pick a plan on the Pricing page.",
+    ],
+    actionLink: { label: "Open Pricing", to: "/pricing" },
+  },
+  {
+    id: "speed",
+    category: "general",
+    title: "How long a search takes",
+    keys: ["how long", "slow", "speed", "stuck", "progress", "cancel", "waiting for results", "loading"],
+    summary: "Most searches take one to two minutes. Dig searches the web, reads the pages, then looks up contact details for every row.",
+    bullets: [
+      "The progress bar shows each step as it happens.",
+      "You can cancel a running search without losing what you already have.",
+      "Results vary a little each run, because the web pages found can differ.",
     ],
   },
   {
-    id: "workspace-and-account-management",
+    id: "events",
     category: "general",
-    title: "Workspaces, Multi-Event Management & Organization",
-    keys: [
-      "account", "workspace", "profile", "logout", "password", "sign out", "rename", "archive", "favourite"
-    ],
-    summary:
-      "Everything you research is organized under your active workspace. You can favorite priority events, archive completed projects, and rename folders.",
+    title: "Events, folders and the README",
+    keys: ["event", "readme", "folder", "hide", "archive", "favourite", "rename", "account", "profile", "password", "sign out", "logout"],
+    summary: "Each event holds a README and a folder for each kind of search.",
     bullets: [
-      "Event Organization: Each event has 5 distinct folders matching the intelligence archetypes.",
-      "Archiving: Archiving an event keeps all historical records safely preserved while freeing up your active event slot.",
-      "Profile & Security: Manage your credentials and review subscription status from the Profile tab.",
+      "The README is the event's plan of record: dates, targets and deadlines. Pitch drafts use it too.",
+      "Hide folders an event doesn't need from the folder's ··· menu; its searches are kept.",
+      "Star an event to keep it in Favourites; archive it when you're done.",
     ],
-    actionLink: { label: "Go to Profile", to: "/profile" },
+    actionLink: { label: "Open your events", to: "/dashboard" },
   },
 ];
 
@@ -226,7 +193,7 @@ export interface IndexedRecord {
   jobName: string;
   fields: Record<string, string | number | boolean>;
   contact?: string | null;
-  outreachStatus: "not_contacted" | "interested" | "declined";
+  outreachStatus: "not_contacted" | "waiting" | "interested" | "declined";
   outreachNote?: string;
   sourceUrl?: string;
 }
@@ -254,6 +221,13 @@ const FOLDER_INTENTS: Record<string, FolderKey> = {
   LEAD_LOOKUP: "leads",
   COMPETITOR_LOOKUP: "competitors",
 };
+
+/** Shows **text** as bold instead of printing the asterisks. */
+function withBold(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+    part.startsWith("**") && part.endsWith("**") ? <strong key={index}>{part.slice(2, -2)}</strong> : part,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 3. Backward-Compatible Keyword Answer Lookup
@@ -340,9 +314,10 @@ export function AskDiglett() {
                   : null;
 
               const mark = outreachMap[rec.canonicalEntityId];
-              const outreachStatus: "interested" | "declined" | "not_contacted" =
+              const outreachStatus: IndexedRecord["outreachStatus"] =
                 mark?.status === "interested" ? "interested" :
-                mark?.status === "declined" ? "declined" : "not_contacted";
+                mark?.status === "declined" ? "declined" :
+                mark?.status === "waiting" ? "waiting" : "not_contacted";
 
               indexed.push({
                 id: rec.id,
@@ -397,13 +372,13 @@ export function AskDiglett() {
       return {
         id: "greet-1",
         from: "diglett",
-        text: `Hi ${session.user.name.split(" ")[0]}! I've loaded your workspace context for **${session.workspace.name}** (${stats.totalEvents} active events, ${stats.totalRecords} sourced records). Ask me anything about your sponsors, leads, or how Dig's veracity engine works!`,
+        text: `Hi ${session.user.name.split(" ")[0]}! I can see **${session.workspace.name}**: ${stats.totalEvents} active events and ${stats.totalRecords} sourced rows. Ask me about your lists, or how anything in Dig works.`,
       };
     }
     return {
       id: "greet-guest",
       from: "diglett",
-      text: "Hi! I’m Diglett, your research intelligence guide. Ask me about finding sponsors, verified leads, UTR payments, or how Dig’s 100% evidence engine works.",
+      text: "Hi! I’m Diglett. Ask me how to find sponsors, judges or leads, or how anything in Dig works.",
     };
   }, [session, stats.totalEvents, stats.totalRecords]);
 
@@ -643,7 +618,12 @@ export function AskDiglett() {
     return {
       id: `rag-${Date.now()}`,
       from: "diglett",
-      text: `I searched your workspace and the platform docs, but didn't find a direct match. You can browse your live records in the **Workspace Index** tab, or ask about:\n\n• *"Who are my sponsors?"*\n• *"Show interested leads"*\n• *"Why veracity over guessed emails?"*\n• *"How does UPI UTR payment work?"*`,
+      text: `I couldn’t find that in your lists or in Dig’s help. Try asking:
+
+• "What can Dig find?"
+• "Why do some rows have no email?"
+• "What is Toolkit?"
+• "Who is interested?"`,
       fallback: true,
       actionLink: { label: "Open Dig Architecture Guide", to: GUIDE_URL },
     };
@@ -683,9 +663,9 @@ export function AskDiglett() {
 
   const SUGGESTED_PROMPTS = useMemo(() => {
     if (stats.sponsorsCount > 0) {
-      return ["Show my verified sponsors", "List interested leads", "How does UTR payment work?", "Why veracity over guessed emails?"];
+      return ["Show my sponsors", "Who is interested?", "Why do some rows have no email?", "What is Toolkit?"];
     }
-    return ["What is Dig?", "Why veracity over guessed emails?", "How does UTR payment work?", "How do I run a search?"];
+    return ["What can Dig find?", "Why do some rows have no email?", "What is Toolkit?", "How long does a search take?"];
   }, [stats.sponsorsCount]);
 
   return (
@@ -699,52 +679,33 @@ export function AskDiglett() {
         >
           {/* macOS Styled Window Titlebar */}
           <div className="diglett-macos-titlebar">
-            <div className="diglett-traffic-lights">
-              <button
-                type="button"
-                className="diglett-dot red"
-                onClick={() => setOpen(false)}
-                title="Close"
-                aria-label="Close"
-              />
-              <button
-                type="button"
-                className="diglett-dot yellow"
-                onClick={() => setOpen(false)}
-                title="Minimize"
-                aria-label="Minimize"
-              />
-              <button
-                type="button"
-                className="diglett-dot green"
-                onClick={() => setExpanded((v) => !v)}
-                title={expanded ? "Standard size" : "Expand window"}
-                aria-label="Expand"
-              />
-            </div>
-
             <div className="diglett-title-center">
               <img src="/art/mole-avatar.png" alt="Diglett" className="diglett-header-avatar" />
               <span className="diglett-title-text">Diglett</span>
             </div>
 
             <div className="diglett-header-right">
-              <span
-                className={`diglett-sync-pill ${session ? "online" : "offline"}`}
-                title={session ? `Synced with ${session.workspace.name}` : "Guest Mode"}
-              >
-                <span className="sync-pulse" />
-                <span className="sync-text">{session ? "Synced" : "Guest"}</span>
-              </span>
-              <button
-                type="button"
-                className="diglett-size-btn"
-                onClick={() => setExpanded((v) => !v)}
-                title={expanded ? "Compact view (380px)" : "Expand view (560px)"}
-                aria-label={expanded ? "Compact view" : "Expand view"}
-              >
-                {expanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-              </button>
+              <Tip text={session ? `Diglett can see the lists in ${session.workspace.name}.` : "Log in so Diglett can see your lists."}>
+                <span className={`diglett-sync-pill ${session ? "online" : "offline"}`} tabIndex={0}>
+                  <span className="sync-pulse" />
+                  <span className="sync-text">{session ? "Synced" : "Guest"}</span>
+                </span>
+              </Tip>
+              <Tip text={expanded ? "Make this panel narrower." : "Make this panel wider."}>
+                <button
+                  type="button"
+                  className="diglett-size-btn"
+                  onClick={() => setExpanded((v) => !v)}
+                  aria-label={expanded ? "Compact view" : "Expand view"}
+                >
+                  {expanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                </button>
+              </Tip>
+              <Tip text="Close Diglett. Press Esc to close too.">
+                <button type="button" className="diglett-size-btn" onClick={() => setOpen(false)} aria-label="Close">
+                  <X size={13} />
+                </button>
+              </Tip>
             </div>
           </div>
 
@@ -765,7 +726,6 @@ export function AskDiglett() {
             >
               <Database size={13} />
               <span>Workspace</span>
-              <span className="diglett-count-badge">{stats.totalRecords}</span>
             </button>
           </div>
 
@@ -778,7 +738,7 @@ export function AskDiglett() {
                     <div className="bubble-markdown-content">
                       {message.text.split("\n\n").map((para, idx) => (
                         <p key={idx} style={{ margin: "4px 0" }}>
-                          {para}
+                          {withBold(para)}
                         </p>
                       ))}
                     </div>
@@ -845,7 +805,7 @@ export function AskDiglett() {
                   placeholder={
                     session
                       ? `Ask about ${session.workspace.name} or Dig features…`
-                      : "Ask Diglett about search, veracity, UTR payments…"
+                      : "Ask about your lists or how Dig works…"
                   }
                   autoFocus
                   maxLength={300}

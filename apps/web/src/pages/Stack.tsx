@@ -5,16 +5,11 @@ const TECH: Array<Array<[string, string]>> = [
   [["typescript", "TypeScript"], ["nodejs", "Node.js"], ["express", "Express"], ["sqlite", "SQLite"]],
   [["zod", "Zod"], ["react", "React"], ["vite", "Vite"], ["tailwind", "Tailwind CSS"]],
   [["tanstack-query", "TanStack Query"], ["tanstack-table", "TanStack Table"], ["react-router", "React Router"], ["vitest", "Vitest"]],
-  [["tavily", "Tavily"], ["groq", "Groq"]],
+  [["tavily", "Tavily"], ["groq", "Groq"], ["hunter", "Hunter.io"], ["openrouter", "Jev · OpenRouter"], ["github", "GitHub API"]],
 ];
 
-const STAGES: Array<[string, string, string]> = [
-  ["collect", "COLLECT", "blue"],
-  ["normalize", "NORMALIZE", "violet"],
-  ["dedupe", "DEDUPE", "orange"],
-  ["validate", "VALIDATE", "green"],
-  ["rank", "RANK", "indigo"],
-];
+/** Services without a logo file get a small lettered badge the same size as the logos. */
+const HAS_LOGO = new Set(["typescript", "nodejs", "express", "sqlite", "zod", "react", "vite", "tailwind", "tanstack-query", "tanstack-table", "react-router", "vitest", "tavily", "groq"]);
 
 const TOOLS: Array<[string, string, string]> = [
   ["claude", "Claude", "AI architecture & pair-programming"],
@@ -52,14 +47,14 @@ export function Stack() {
         <Section
           title="tech_stack"
           tag="01 · runtime"
-          intro="Dig is a single-search, source-grounded research pipeline. One natural-language question becomes one Tavily search, matched to an intent, extracted by an LLM, and checked field-by-field against its own source text before anything is shown to you. No hallucinated data, no unlabeled guesses — every result traces back to a real page, and every re-run resolves what changed instead of duplicating it."
+          intro="Dig is a source-grounded research pipeline. A plain-language question becomes a set of web searches (Tavily), extracted by an LLM (Groq) and checked field by field against its source page. Contact details come from LinkedIn and GitHub pages and from Hunter.io's web-sourced emails, and Jev helps decide which value to trust when pages disagree. Every result traces back to a real page, and every re-run shows what changed instead of duplicating it."
         >
           <div className="bricks">
             {TECH.map((row, index) => (
               <div key={index} className="brick-row">
                 {row.map(([key, label]) => (
                   <div key={key} className="brick">
-                    <img src={icon(`tech-${key}`)} alt="" />
+                    {HAS_LOGO.has(key) ? <img src={icon(`tech-${key}`)} alt="" /> : <span className="brick-badge" aria-hidden>{label.charAt(0)}</span>}
                     <span>{label}</span>
                   </div>
                 ))}
@@ -71,9 +66,9 @@ export function Stack() {
         <Section
           title="execution_pipeline"
           tag="02 · pipeline"
-          intro="Every search Dig runs follows the same path. One question is matched to an intent, turned into a single search call, and walked through five pipeline stages before it’s shown to you. Conflicts on a re-run get resolved automatically when the answer’s clear — and handed to you when it isn’t."
+          intro="Every search follows the same ten steps. A value is kept only if it is on its source page, contacts count only when the name and the organisation match, and the most complete rows come first. On a re-run, clear changes are settled automatically and real disagreements are handed to you."
         >
-          <div className="pipe" role="img" aria-label="Dig pipeline: query input, branch to matched or ambiguous, collect, normalize, dedupe, validate, rank, conflict check, structured sourced result.">
+          <div className="pipe pipe-v2">
             <div className="pipe-bar">
               <i />
               <i />
@@ -81,57 +76,11 @@ export function Stack() {
               <span>dig_pipeline.sh</span>
             </div>
             <div className="pipe-body">
-              <div className="pipe-title">DIG PIPELINE ARCHITECTURE</div>
-              <div className="pipe-node green pipe-query">
-                <img src={icon("pipe-query")} alt="" />
-                <div>
-                  <b>query input</b>
-                  <ul>
-                    <li>natural-language question in</li>
-                    <li>intent keyword match</li>
-                    <li>query plan built</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="pipe-arrow" />
-              <div className="pipe-group pipe-branch">
-                <div className="pipe-label">
-                  <img src={icon("pipe-gear")} alt="" /> branch
-                </div>
-                <div className="pipe-fork">
-                  <span className="pipe-tag blue">[ MATCHED ]</span>
-                  <span className="pipe-tag pink">[ AMBIGUOUS ]</span>
-                </div>
-              </div>
-              <div className="pipe-arrow" />
-              <div className="pipe-group pipe-stages">
-                {STAGES.map(([key, label, color], index) => (
-                  <div key={key} className="pipe-step">
-                    {index > 0 && <span className="pipe-next" aria-hidden />}
-                    <div className={`pipe-stage ${color}`}>
-                      <img src={icon(`pipe-${key}`)} alt="" />
-                      {label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="pipe-arrow" />
-              <div className="pipe-node violet pipe-conflict">
-                <img src={icon("pipe-conflict")} alt="" />
-                <div>
-                  <b>conflict check</b>
-                  <ul>
-                    <li>compare recency + authority</li>
-                    <li>auto-resolve if confident</li>
-                    <li>flag for human review if not</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="pipe-arrow" />
-              <div className="pipe-node green pipe-result">
-                <img src={icon("pipe-result")} alt="" />
-                <b>structured, sourced result</b>
-              </div>
+              <img
+                className="pipe-diagram"
+                src="/art/pipeline-v2.png"
+                alt="Dig pipeline: your question, then understand, search, extract, ground, enrich, describe, trust, normalize and dedupe and validate, rank, and compare on re-run, giving a sourced, versioned list. From the list you can track outreach, write a pitch, use Toolkit, or export."
+              />
             </div>
           </div>
         </Section>

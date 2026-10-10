@@ -2,6 +2,8 @@ import { Archive, ChevronLeft, ChevronRight, Clock, CreditCard, Folder, LogOut, 
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEvents } from "../events";
+import { NAV_HELP } from "../help";
+import { Tip } from "./Tip";
 import { initials, logOut, useSession } from "../session";
 import { AskDiglett } from "./Diglett";
 
@@ -56,18 +58,18 @@ export function AppWindow(props: {
     <div className="desk">
       <div className="window">
         <div className="titlebar">
-          <div className="lights" style={showSidebar ? undefined : { width: "auto", marginRight: 10 }}>
-            <span />
-            <span />
-            <span />
-          </div>
+          {showSidebar && <div className="titlebar-gap" aria-hidden />}
           <div className="nav-arrows">
-            <button onClick={() => navigate(-1)} aria-label="Back" disabled={historyIndex === 0}>
-              <ChevronLeft size={18} />
-            </button>
-            <button onClick={() => navigate(1)} aria-label="Forward">
-              <ChevronRight size={18} />
-            </button>
+            <Tip text={NAV_HELP.back}>
+              <button onClick={() => navigate(-1)} aria-label="Back" disabled={historyIndex === 0}>
+                <ChevronLeft size={18} />
+              </button>
+            </Tip>
+            <Tip text={NAV_HELP.forward}>
+              <button onClick={() => navigate(1)} aria-label="Forward">
+                <ChevronRight size={18} />
+              </button>
+            </Tip>
           </div>
           <nav className="crumbs">
             {props.crumbs.map((crumb, index) => {
@@ -94,24 +96,18 @@ export function AppWindow(props: {
             </label>
           )}
           <div className="titlebar-appearance" role="group" aria-label="Color Theme">
-            <button
-              type="button"
-              aria-pressed={theme === "light"}
-              onClick={() => setTheme("light")}
-              title="Bright / Light Mode"
-            >
-              <Sun size={13} />
-              <span>Light</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={theme === "dark"}
-              onClick={() => setTheme("dark")}
-              title="Dark Mode"
-            >
-              <Moon size={13} />
-              <span>Dark</span>
-            </button>
+            <Tip text={NAV_HELP.light}>
+              <button type="button" aria-pressed={theme === "light"} onClick={() => setTheme("light")}>
+                <Sun size={13} />
+                <span>Light</span>
+              </button>
+            </Tip>
+            <Tip text={NAV_HELP.dark}>
+              <button type="button" aria-pressed={theme === "dark"} onClick={() => setTheme("dark")}>
+                <Moon size={13} />
+                <span>Dark</span>
+              </button>
+            </Tip>
           </div>
           {showSidebar && <Avatar />}
         </div>
@@ -124,6 +120,17 @@ export function AppWindow(props: {
       </div>
     </div>
   );
+}
+
+/** Remembers that Toolkit has been opened once. */
+export const TOOLKIT_VISITED_KEY = "dig-toolkit-visited";
+
+export function markToolkitVisited() {
+  try {
+    localStorage.setItem(TOOLKIT_VISITED_KEY, "1");
+  } catch {
+    // Storage can be blocked; the dot then simply stays.
+  }
 }
 
 function Sidebar({ active }: { active: SideView }) {
@@ -140,35 +147,45 @@ function Sidebar({ active }: { active: SideView }) {
       <h6>Events</h6>
       <div className="side-group">
         {items.map((item) => (
-          <Link key={item.key} to={`/dashboard?view=${item.key}`} className={`side-item${active === item.key ? " active" : ""}`}>
-            {item.icon}
-            {item.label}
-            <span className="count">{item.count}</span>
-          </Link>
+          <Tip key={item.key} text={NAV_HELP[item.key]} block>
+            <Link to={`/dashboard?view=${item.key}`} className={`side-item${active === item.key ? " active" : ""}`}>
+              {item.icon}
+              {item.label}
+              <span className="count">{item.count}</span>
+            </Link>
+          </Tip>
         ))}
       </div>
       <h6>Toolkit</h6>
       <div className="side-group">
-        <Link to="/agents" className={`side-item${active === "agents" || active === "flow" || active === "lens" || active === "mission" || active === "merger" ? " active" : ""}`}>
-          <Folder size={16} />
-          Toolkit
-          <span className="count">4</span>
-        </Link>
+        <Tip text={NAV_HELP.toolkit} block>
+          <Link to="/agents" className={`side-item${active === "agents" || active === "flow" || active === "lens" || active === "mission" || active === "merger" ? " active" : ""}`}>
+            <Folder size={16} />
+            Toolkit
+            <span className="count">4</span>
+          </Link>
+        </Tip>
       </div>
       <h6>Account</h6>
       <div className="side-group">
-        <Link to="/profile" className={`side-item${active === "profile" ? " active" : ""}`}>
-          <User size={16} />
-          Profile
-        </Link>
-        <Link to="/pricing" className={`side-item${active === "pricing" ? " active" : ""}`}>
-          <CreditCard size={16} />
-          Pricing
-        </Link>
-        <button className="side-item" onClick={() => void logOut().finally(() => navigate("/"))}>
-          <LogOut size={16} />
-          Log Out
-        </button>
+        <Tip text={NAV_HELP.profile} block>
+          <Link to="/profile" className={`side-item${active === "profile" ? " active" : ""}`}>
+            <User size={16} />
+            Profile
+          </Link>
+        </Tip>
+        <Tip text={NAV_HELP.pricing} block>
+          <Link to="/pricing" className={`side-item${active === "pricing" ? " active" : ""}`}>
+            <CreditCard size={16} />
+            Pricing
+          </Link>
+        </Tip>
+        <Tip text={NAV_HELP.logOut} block>
+          <button className="side-item" onClick={() => void logOut().finally(() => navigate("/"))}>
+            <LogOut size={16} />
+            Log Out
+          </button>
+        </Tip>
       </div>
     </aside>
   );
@@ -179,9 +196,11 @@ function Avatar() {
   const name = session?.user.name ?? "";
   const badge = initials(name);
   return (
-    <Link to="/profile" className="avatar" title={name ? `${name} — Profile` : "Profile"} aria-label="Open profile">
-      {badge || <User size={15} />}
-    </Link>
+    <Tip text={name ? `${name}: ${NAV_HELP.avatar.toLowerCase()}` : NAV_HELP.avatar}>
+      <Link to="/profile" className="avatar" aria-label="Open profile">
+        {badge || <User size={15} />}
+      </Link>
+    </Tip>
   );
 }
 

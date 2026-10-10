@@ -371,11 +371,7 @@ button.mk-link { background: none; border: 0; padding: 0; }
   background: var(--titlebar); border-bottom: 1px solid var(--hairline);
   padding: 0 14px 0 16px;
 }
-.lights { display: flex; gap: 8px; width: 196px; flex: none; }
-.lights span { width: 12px; height: 12px; border-radius: 50%; }
-.lights span:nth-child(1) { background: #ff5f57; }
-.lights span:nth-child(2) { background: #febc2e; }
-.lights span:nth-child(3) { background: #28c840; }
+.titlebar-gap { width: 196px; flex: none; }
 .nav-arrows { display: flex; gap: 4px; color: #6e6e73; }
 .nav-arrows button { background: none; border: 0; padding: 4px; border-radius: 5px; display: grid; place-items: center; }
 .nav-arrows button:hover { background: #e7e7e9; }
@@ -3150,8 +3146,8 @@ a.avatar { text-decoration: none; }
 a.avatar:hover { background: #d9853c; }
 
 /* Profile */
-.profile { max-width: 900px; }
-.profile h5 { margin: 30px 0 12px; }
+.profile > * { max-width: 900px; margin-left: auto; margin-right: auto; }
+.profile > h5 { margin: 30px auto 12px; }
 .profile .sub { font-size: 13px; color: var(--text-2); }
 .profile-card { display: flex; align-items: center; gap: 18px; padding: 20px 22px; }
 .profile-card h1 { font-size: 20px; font-weight: 700; margin: 0 0 3px; }
@@ -8938,3 +8934,96 @@ html[data-theme="dark"] .receipt-hero-amount {
   .kickoff-phase li { grid-template-columns: 18px 1fr 52px; }
   .kickoff-find { grid-column: 2; }
 }
+
+/* Hover help: one style everywhere. Quiet, readable, never wider than a short sentence. */
+.tip-anchor { display: inline-flex; max-width: 100%; }
+.tip-anchor.block { display: flex; width: 100%; }
+.tip-bubble {
+  position: fixed; z-index: 3000; max-width: 280px; padding: 7px 10px; border-radius: 7px;
+  background: #1d1d1f; color: #f5f5f7; font-size: 12px; line-height: 1.45; font-weight: 400;
+  text-transform: none; letter-spacing: 0; white-space: normal; text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); pointer-events: none;
+  animation: tip-in 120ms ease-out;
+}
+html[data-theme="dark"] .tip-bubble { background: #f5f5f7; color: #1d1d1f; }
+@keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tip-bubble { animation: none; } }
+.info-tip {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 4px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: help;
+}
+.info-tip:hover, .info-tip:focus-visible { color: var(--text); }
+
+/* Password field with a show/hide eye inside it. */
+.password-field { position: relative; display: block; }
+.password-field input { width: 100%; padding-right: 40px !important; }
+.password-field .tip-anchor { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
+.password-toggle {
+  display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--dust, #8a8a8e); cursor: pointer;
+}
+.password-toggle:hover, .password-toggle:focus-visible { color: var(--amber, #c98a3c); }
+
+/* A plain X to close any pop-up. */
+.modal-x {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-2); cursor: pointer;
+}
+.modal-x:hover, .modal-x:focus-visible { background: var(--raised); color: var(--text); }
+
+/* "Why a README?": quiet, collapsible, under the README card. */
+.readme-note {
+  margin: -6px 0 18px; padding: 8px 12px; border-radius: 8px; background: var(--sunken);
+  font-size: 12px; line-height: 1.5; color: var(--text-3); max-width: 1100px;
+}
+.readme-note summary { cursor: pointer; font-weight: 600; color: var(--text-2); }
+.readme-note p { margin: 6px 0 0; }
+
+/* Toolkit intro: the artwork on the left at its own 1:2 shape, text on the right. Centred over the whole page. */
+.toolkit-intro-backdrop {
+  position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0, 0, 0, 0.5); animation: toolkit-fade 160ms ease-out;
+}
+.toolkit-intro {
+  --intro-h: min(540px, calc(100vh - 48px));
+  width: min(820px, 100%); height: var(--intro-h); display: flex;
+  background: var(--card); color: var(--text); border: 1px solid var(--hairline); border-radius: 16px;
+  overflow: hidden; box-shadow: 0 28px 70px rgba(0, 0, 0, 0.3);
+}
+.toolkit-intro-art { flex: none; height: 100%; aspect-ratio: 1 / 2; background: #190c04; }
+.toolkit-intro-art img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.toolkit-intro-text { position: relative; flex: 1; min-width: 0; padding: 40px 40px 32px; display: flex; flex-direction: column; overflow-y: auto; }
+.toolkit-intro-x { position: absolute; top: 14px; right: 14px; }
+.toolkit-intro-kicker { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #2563eb; }
+.toolkit-intro h2 { margin: 8px 0 8px; font-size: 28px; font-weight: 700; }
+.toolkit-intro-lead { margin: 0 0 24px; font-size: 15px; color: var(--text-2); }
+.toolkit-intro ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+.toolkit-intro li { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+.toolkit-intro li b { display: block; font-weight: 600; }
+.toolkit-intro li span span { color: var(--text-2); }
+.toolkit-intro-icon {
+  display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 9px;
+  background: var(--sunken); color: var(--text);
+}
+.toolkit-intro-actions { margin-top: auto; padding-top: 24px; display: flex; gap: 10px; }
+@keyframes toolkit-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .toolkit-intro-backdrop { animation: none; } }
+@media (max-width: 680px) {
+  .toolkit-intro { flex-direction: column; height: auto; max-height: calc(100vh - 32px); }
+  .toolkit-intro-art { height: 180px; aspect-ratio: auto; width: 100%; }
+  .toolkit-intro-text { padding: 24px 22px 22px; }
+}
+
+
+/* Pricing: a plain estimator and three short "what counts" notes. */
+.plan-estimator { margin: 22px 0 0; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.plan-estimator.open { padding: 16px 18px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--card); }
+.plan-estimator label { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 460px; font-size: 13px; color: var(--text-2); }
+.plan-estimator label b { color: var(--text); margin-left: 6px; }
+.plan-estimator input[type="range"] { width: 100%; }
+.plan-estimator-answer { margin: 0; font-size: 14px; color: var(--text); }
+.pricing-rules { margin-top: 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pricing-rules > div { padding: 14px 16px; border-radius: 10px; background: var(--sunken); }
+.pricing-rules h5 { margin: 0 0 4px; font-size: 13px; font-weight: 650; color: var(--text); }
+.pricing-rules p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+@media (max-width: 760px) { .pricing-rules { grid-template-columns: 1fr; } }

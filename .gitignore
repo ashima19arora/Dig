@@ -9,3 +9,6 @@ data/*.db-journal
 data/cache/
 
 data/
+
+# Private pitch notes, kept out of the public repo
+Judge_Defense_Guide.md

@@ -75,7 +75,7 @@ export function Profile() {
         {jobsQ.isError ? (
           <p className="err">Couldn’t load your searches: {jobsQ.error instanceof Error ? jobsQ.error.message : String(jobsQ.error)}</p>
         ) : searches.length === 0 ? (
-          <p className="profile-note">{jobsQ.isLoading ? "Loading…" : "No searches yet — open an event and use New Query."}</p>
+          <p className="profile-note">{jobsQ.isLoading ? "Loading…" : "No searches yet. Open an event and click Got Something Else? to start one."}</p>
         ) : (
           <div className="card" style={{ padding: 0 }}>
             {searches.slice(0, 8).map((job) => {

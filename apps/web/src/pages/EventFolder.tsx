@@ -6,6 +6,8 @@ import { ApiError, api, type JobSummary } from "../api";
 import { AppWindow, FolderTile, NewFolderIcon } from "../components/Shell";
 import { eventStored, FOLDERS, folderLabel, renameFolder, ROOT_CRUMB, touchEvent, unlinkJob, updateEvent, useEvents, type DigEvent } from "../events";
 import { EventSheet } from "./EventSheet";
+import { Tip } from "../components/Tip";
+import { EVENT_HELP } from "../help";
 
 export function EventFolder() {
   const { eventId = "" } = useParams();
@@ -44,12 +46,16 @@ export function EventFolder() {
       sidebar={null}
       actions={
         <>
-          <button className="btn amber" onClick={() => setAsking(true)}>
-            <Plus size={15} strokeWidth={2.4} /> Got Something Else?
-          </button>
-          <button className="btn" onClick={() => setEditing(true)}>
-            <Pencil size={13} /> Edit README
-          </button>
+          <Tip text={EVENT_HELP.gotSomethingElse}>
+            <button className="btn amber" onClick={() => setAsking(true)}>
+              <Plus size={15} strokeWidth={2.4} /> Got Something Else?
+            </button>
+          </Tip>
+          <Tip text={EVENT_HELP.editReadme}>
+            <button className="btn" onClick={() => setEditing(true)}>
+              <Pencil size={13} /> Edit README
+            </button>
+          </Tip>
         </>
       }
       search={{ value: filter, onChange: setFilter, placeholder: "Search folders" }}
@@ -78,8 +84,9 @@ export function EventFolder() {
             {!event.description && !event.date && !event.targets && <p className="hint-line">Add a description, date and targets with Edit README.</p>}
           </div>
         </section>
+        <ReadmeNote />
 
-        <div className="label-muted">Job Types</div>
+        <div className="label-muted">Folders</div>
         <div className="folders">
           {folders.map((folder) => (
             <JobFolder key={folder.key} event={event} folder={folder.key} hidden={hidden.has(folder.key)} />
@@ -90,7 +97,7 @@ export function EventFolder() {
           </button>
         </div>
         {hidden.size > 0 && (
-          <button className="hidden-folders-toggle" onClick={() => setShowHidden((current) => !current)}>
+          <button className="hidden-folders-toggle" onClick={() => setShowHidden((current) => !current)} title={EVENT_HELP.showHidden}>
             {showHidden ? "Hide the hidden folders again" : `Show ${hidden.size} hidden folder${hidden.size === 1 ? "" : "s"}`}
           </button>
         )}
@@ -121,12 +128,48 @@ export function EventFolder() {
   );
 }
 
+const README_NOTE_KEY = "dig-readme-note-open";
+
+/** A quiet, collapsible note on what the README is for. Remembers whether you closed it. */
+function ReadmeNote() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(README_NOTE_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  return (
+    <details
+      className="readme-note"
+      open={open}
+      onToggle={(toggle) => {
+        const next = (toggle.currentTarget as HTMLDetailsElement).open;
+        setOpen(next);
+        try {
+          localStorage.setItem(README_NOTE_KEY, next ? "1" : "0");
+        } catch {
+          // Remembering is a convenience only.
+        }
+      }}
+    >
+      <summary>Why a README?</summary>
+      <p>
+        It's your event's plan in one place: dates, targets and deadlines, like "start cold emails by November" or "dates
+        moved to Nov 20", so the whole team stays in sync.
+      </p>
+      <p>Dig also uses it when it drafts a pitch, so a clear README means better emails.</p>
+    </details>
+  );
+}
+
 function JobFolder({ event, folder, hidden }: { event: DigEvent; folder: FolderKey; hidden: boolean }) {
   const navigate = useNavigate();
   const linked = event.jobs[folder];
   const others = (event.hiddenFolders ?? []).filter((key) => key !== folder);
   return (
     <div className={hidden ? "folder-hidden" : undefined}>
+    <Tip text={hidden ? `Hidden from this event. ${EVENT_HELP.folder}` : EVENT_HELP.folder}>
     <FolderTile
       to={`/events/${event.id}/${folder}`}
       name={folderLabel(event, folder)}
@@ -139,6 +182,7 @@ function JobFolder({ event, folder, hidden }: { event: DigEvent; folder: FolderK
           : { label: "Hide folder", onClick: () => void updateEvent(event.id, { hiddenFolders: [...others, folder] }) },
       ]}
     />
+    </Tip>
     </div>
   );
 }

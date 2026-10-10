@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../api";
 import { queryClient } from "../query";
 import { useSession, type Session } from "../session";
+import { PasswordInput } from "../components/PasswordInput";
 
 type Field = "name" | "email" | "password";
 
@@ -83,10 +84,9 @@ export function Auth({ mode }: { mode: "login" | "signup" }) {
         <input id="email" name="email" type="email" autoComplete="email" placeholder="you@geekroom.in" value={values.email} onChange={set("email")} aria-invalid={Boolean(errors.email)} />
         {fieldError("email")}
         <label htmlFor="password">Password</label>
-        <input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete={signup ? "new-password" : "current-password"}
           placeholder={signup ? "At least 8 characters" : "••••••••"}
           value={values.password}

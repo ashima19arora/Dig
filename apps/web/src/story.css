@@ -121,3 +121,13 @@
   .pipe-query { margin-left: 0; min-width: 0; align-self: stretch; }
   .brick { width: 138px; }
 }
+
+/* Stack page: the v2 pipeline diagram inside the terminal frame, and lettered badges for services without a logo. */
+.pipe-diagram { display: block; width: 100%; height: auto; border-radius: 6px; }
+.brick-badge {
+  display: grid; place-items: center; width: 42px; height: 38px; flex: none; border-radius: 8px;
+  background: rgba(255, 196, 120, 0.14); color: #ffc478; font-weight: 800; font-size: 18px;
+}
+.pipe.pipe-v2 { background: #150a03; border-color: #c97a2c; }
+.pipe.pipe-v2 .pipe-bar { border-bottom-color: #c97a2c; }
+.pipe.pipe-v2 .pipe-body { padding: 10px; }
