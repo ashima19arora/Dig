@@ -923,57 +923,67 @@ function UpiPaymentModal({ plan, billingCycle, onClose, onSuccess }: UpiPaymentM
             /* Digital Transaction Receipt view */
             <div className="macos-receipt-view">
               <div className="macos-receipt-stamp">
-                <BadgeCheck size={28} color="#10b981" />
-                <span>SETTLED &amp; VERIFIED</span>
+                <div className="receipt-stamp-badge">
+                  <BadgeCheck size={16} className="receipt-stamp-icon" />
+                  <span className="receipt-stamp-text">SETTLED &amp; VERIFIED</span>
+                  <span className="receipt-stamp-dot">&bull;</span>
+                  <span className="receipt-stamp-sub">NPCI Instant Bank Clearance</span>
+                </div>
               </div>
 
               <div className="macos-receipt-paper">
                 <div className="receipt-paper-header">
                   <div className="receipt-brand">
                     <span className="receipt-brand-logo">DIG</span>
-                    <span>INTELLIGENCE NETWORKS</span>
+                    <span className="receipt-brand-text">INTELLIGENCE NETWORKS</span>
                   </div>
                   <span className="receipt-tx-code">
-                    TXN-NPCI-{Math.floor(100000 + Math.random() * 900000)}
+                    {confirmedUtr && confirmedUtr !== "COMMUNITY-FREE"
+                      ? `TXN-NPCI-${confirmedUtr.slice(-6)}`
+                      : "TXN-NPCI-571949"}
                   </span>
                 </div>
 
-                <div className="receipt-divider" />
-
-                <div className="receipt-table">
-                  <div className="receipt-row">
-                    <span className="receipt-label">Subscribed Plan</span>
-                    <span className="receipt-val bold">{plan.name}</span>
-                  </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Billing Cycle</span>
-                    <span className="receipt-val">
+                {/* Primary Financial Settlement Hero */}
+                <div className="receipt-hero-card">
+                  <div className="receipt-hero-plan-meta">
+                    <span className="receipt-hero-plan-name">{plan.name}</span>
+                    <span className="receipt-hero-cycle">
                       {activeCycle === "annual"
-                        ? `Annual Prepaid (${scaleMultiplier > 1 ? `${scaleMultiplier}x Scale · ` : ""}12 Mo)`
-                        : `Monthly Flexible (${scaleMultiplier > 1 ? `${scaleMultiplier}x Scale · ` : ""}1 Mo)`}
+                        ? `Annual Prepaid (${scaleMultiplier > 1 ? `${scaleMultiplier}x Scale · ` : ""}12 Months)`
+                        : `Monthly Flexible (${scaleMultiplier > 1 ? `${scaleMultiplier}x Scale · ` : ""}1 Month)`}
                     </span>
                   </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Amount Settled</span>
-                    <span className="receipt-val bold price">₹{amount.toLocaleString()}.00</span>
-                  </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Platform Gateway Fee</span>
-                    <span className="receipt-val" style={{ color: "#10b981" }}>
-                      ₹0.00 (Direct UPI Rails)
+                  <div className="receipt-hero-amount-box">
+                    <span className="receipt-hero-amount">₹{amount.toLocaleString()}.00</span>
+                    <span className="receipt-hero-status-pill">
+                      <Check size={11} strokeWidth={3} /> Paid in Full
                     </span>
                   </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Bank UTR Reference</span>
-                    <span className="receipt-val mono">{confirmedUtr}</span>
+                </div>
+
+                {/* Structured Transaction Metadata Grid */}
+                <div className="receipt-meta-grid">
+                  <div className="receipt-meta-tile">
+                    <span className="receipt-meta-tile-label">Bank UTR Reference</span>
+                    <span className="receipt-meta-tile-val mono">{confirmedUtr}</span>
                   </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Settlement Destination</span>
-                    <span className="receipt-val">{upiId} (MAYANK GARG)</span>
+                  <div className="receipt-meta-tile">
+                    <span className="receipt-meta-tile-label">Platform Gateway Fee</span>
+                    <span className="receipt-meta-tile-val fee-free">
+                      ₹0.00 <span className="receipt-fee-tag">Direct UPI Rails</span>
+                    </span>
                   </div>
-                  <div className="receipt-row">
-                    <span className="receipt-label">Timestamp</span>
-                    <span className="receipt-val">
+                  <div className="receipt-meta-tile">
+                    <span className="receipt-meta-tile-label">Settlement Destination</span>
+                    <span className="receipt-meta-tile-val">
+                      <span className="receipt-dest-id">{upiId}</span>
+                      <span className="receipt-dest-name">({merchantName})</span>
+                    </span>
+                  </div>
+                  <div className="receipt-meta-tile">
+                    <span className="receipt-meta-tile-label">Settlement Timestamp</span>
+                    <span className="receipt-meta-tile-val">
                       {confirmedDate ||
                         new Date().toLocaleString("en-IN", {
                           dateStyle: "medium",
@@ -983,18 +993,21 @@ function UpiPaymentModal({ plan, billingCycle, onClose, onSuccess }: UpiPaymentM
                   </div>
                 </div>
 
-                <div className="receipt-divider" />
-
                 <div className="receipt-features-unlocked">
-                  <span className="receipt-section-label">UNLOCKED WORKSPACE PRIVILEGES</span>
-                  <ul>
+                  <div className="receipt-features-head">
+                    <Sparkles size={12} color="#10b981" />
+                    <span className="receipt-section-label">UNLOCKED WORKSPACE PRIVILEGES</span>
+                  </div>
+                  <div className="receipt-features-grid">
                     {plan.features.slice(0, 4).map((f) => (
-                      <li key={f}>
-                        <Check size={12} color="#10b981" />
+                      <div key={f} className="receipt-feature-item">
+                        <span className="receipt-feature-check">
+                          <Check size={11} strokeWidth={3} />
+                        </span>
                         <span>{f}</span>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               </div>
 
