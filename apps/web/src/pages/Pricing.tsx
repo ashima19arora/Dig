@@ -1,5 +1,6 @@
 import {
   BadgeCheck,
+  Calculator,
   Check,
   CheckCircle2,
   Copy,
@@ -90,13 +91,96 @@ export function Pricing() {
   const [currentPlan, setCurrentPlan] = useState<"starter" | "pro" | "scale">("starter");
   const [modalPlan, setModalPlan] = useState<PlanTier | null>(null);
   const [successToast, setSuccessToast] = useState<{ planName: string; utr: string } | null>(null);
-  const [estimating, setEstimating] = useState(false);
-  const [searches, setSearches] = useState(40);
-  const [events, setEvents] = useState(3);
+  // Workload Calculator interactive state
+  const [calcRuns, setCalcRuns] = useState<number>(40);
+  const [calcLists, setCalcLists] = useState<number>(20);
+  const [calcEvents, setCalcEvents] = useState<number>(6);
+  const [activePreset, setActivePreset] = useState<string>("solo");
 
-  // The smallest plan that covers what you said you need.
-  const fit = TIERS.find((tier) => searches <= tier.searches && events <= tier.events) ?? TIERS[2]!;
-  const fitPrice = monthlyFor(fit, billingCycle);
+  // Dynamic recommendation and workload calculation based on all three parameters
+  const recommendation = useMemo(() => {
+    // 1. Determine Tier based on genuine capacities
+    let tier = TIERS[0]; // starter
+    if (calcRuns > 5 || calcLists > 2 || calcEvents > 1) {
+      if (calcRuns <= 40 && calcLists <= 20 && calcEvents <= 6) {
+        tier = TIERS[1]; // pro
+      } else {
+        tier = TIERS[2]; // scale
+      }
+    }
+
+    // 2. Base price according to billing cycle
+    let baseMonthlyPrice = 0;
+    if (tier.id === "pro") {
+      baseMonthlyPrice = billingCycle === "annual" ? 332 : 399;
+    } else if (tier.id === "scale") {
+      baseMonthlyPrice = billingCycle === "annual" ? 990 : 1190;
+    }
+
+    // 3. For Scale tier, compute tailored volume buffer if exceeding base scale allowances
+    let bufferAddon = 0;
+    if (tier.id === "scale") {
+      const extraRuns = Math.max(0, calcRuns - 100);
+      const extraLists = Math.max(0, calcLists - 40);
+      const extraEvents = Math.max(0, calcEvents - 10);
+      bufferAddon = Math.round(extraRuns * 2.5 + extraLists * 6 + extraEvents * 30);
+    }
+    const finalMonthlyPrice = baseMonthlyPrice + bufferAddon;
+
+    // 4. Human Research Hours dynamically calculated across all 3 inputs:
+    // - 1.2 hrs per live collection run
+    // - 3.0 hrs per curated dataset list built & validated
+    // - 8.0 hrs per simultaneous hackathon event radar managed
+    const roiHours = Math.round(calcRuns * 1.2 + calcLists * 3.0 + calcEvents * 8.0);
+
+    // 5. Freelance Agency / Manual Cost equivalent dynamically calculated across all 3 inputs:
+    // - ₹400 per live collection run
+    // - ₹1,250 per curated list built & verified
+    // - ₹4,000 per hackathon event sponsor & contact radar
+    const manualCost = Math.round(calcRuns * 400 + calcLists * 1250 + calcEvents * 4000);
+
+    // 6. Net savings and effective unit costs
+    const netSavings = Math.max(0, manualCost - finalMonthlyPrice);
+    const savingsRatio = manualCost > 0 ? Math.round((netSavings / manualCost) * 100) : 0;
+    const costPerList = calcLists > 0 ? Math.round(finalMonthlyPrice / calcLists) : 0;
+    const costPerEvent = calcEvents > 0 ? Math.round(finalMonthlyPrice / calcEvents) : 0;
+
+    const priceText = finalMonthlyPrice === 0 ? "₹0 / mo" : `₹${finalMonthlyPrice.toLocaleString()} / mo`;
+    const savingsText = finalMonthlyPrice === 0
+      ? "Save 100% with Community Tier"
+      : `Save ~${roiHours} hrs & ₹${netSavings.toLocaleString()}/mo`;
+
+    return {
+      tier,
+      finalMonthlyPrice,
+      priceText,
+      savingsText,
+      roiHours,
+      manualCost,
+      netSavings,
+      savingsRatio,
+      costPerList,
+      costPerEvent,
+      isCustomVolume: bufferAddon > 0,
+    };
+  }, [calcRuns, calcLists, calcEvents, billingCycle]);
+
+  const applyPreset = (preset: "student" | "solo" | "agency") => {
+    setActivePreset(preset);
+    if (preset === "student") {
+      setCalcRuns(5);
+      setCalcLists(2);
+      setCalcEvents(1);
+    } else if (preset === "solo") {
+      setCalcRuns(40);
+      setCalcLists(20);
+      setCalcEvents(6);
+    } else if (preset === "agency") {
+      setCalcRuns(180);
+      setCalcLists(75);
+      setCalcEvents(15);
+    }
+  };
 
   const handleSelectPlan = (tier: PlanTier) => {
     if (tier.id === currentPlan) return;
@@ -117,10 +201,13 @@ export function Pricing() {
 
   return (
     <AppWindow crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Pricing" }]} sidebar="pricing">
-      <div className="content profile pricing">
+      <div className="content">
+      <div className="pricing">
         <div className="pricing-header-wrap">
-          <h2>Pricing</h2>
-          <p>Pick a plan by how many searches you run. Opening, filtering and downloading your lists is always free.</p>
+          <div>
+            <h2>Pricing</h2>
+            <p>Pick a plan by how many searches you run. Opening, filtering and downloading your lists is always free.</p>
+          </div>
 
           <div className="pricing-cycle-toggle" role="group" aria-label="Billing cycle">
             <button type="button" className={`cycle-btn ${billingCycle === "monthly" ? "active" : ""}`} onClick={() => setBillingCycle("monthly")}>
@@ -176,38 +263,187 @@ export function Pricing() {
           })}
         </div>
 
-        <section className={estimating ? "plan-estimator open" : "plan-estimator"}>
-          {!estimating ? (
-            <button type="button" className="btn" onClick={() => setEstimating(true)}>
-              Not sure? Estimate my plan
-            </button>
-          ) : (
-            <>
-              <label>
-                <span>
-                  Searches a month <b>{searches}</b>
-                </span>
-                <input type="range" min={5} max={250} step={5} value={searches} onChange={(e) => setSearches(Number(e.target.value))} />
-              </label>
-              <label>
-                <span>
-                  Events at the same time <b>{events}</b>
-                </span>
-                <input type="range" min={1} max={20} step={1} value={events} onChange={(e) => setEvents(Number(e.target.value))} />
-              </label>
-              <p className="plan-estimator-answer">
-                For about {searches} searches a month across {events} {events === 1 ? "event" : "events"}, <b>{fit.name}</b> fits you best:{" "}
-                <b>{fitPrice === 0 ? "free" : `₹${fitPrice.toLocaleString()} / month`}</b>
-                {fitPrice > 0 && billingCycle === "annual" ? " (billed yearly)" : ""}.
+        {/* Interactive Workload Calculator */}
+        <section className="workload-calculator">
+          <div className="calc-head">
+            <div className="calc-title-box">
+              <div className="calc-icon">
+                <Calculator size={19} />
+              </div>
+              <div>
+                <h3>Estimate your plan and savings</h3>
+                <p>Move the sliders to match your work, or pick a preset.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="calc-body">
+            <div className="calc-sliders-col">
+              <div className="calc-presets-row">
+                <span className="calc-presets-label">Presets:</span>
+                <div className="calc-presets-group">
+                  <button
+                    type="button"
+                    className={`calc-preset-chip ${activePreset === "student" ? "active" : ""}`}
+                    onClick={() => applyPreset("student")}
+                  >
+                    🎓 Student
+                  </button>
+                  <button
+                    type="button"
+                    className={`calc-preset-chip ${activePreset === "solo" ? "active" : ""}`}
+                    onClick={() => applyPreset("solo")}
+                  >
+                    ⚡ Solo Scout
+                  </button>
+                  <button
+                    type="button"
+                    className={`calc-preset-chip ${activePreset === "agency" ? "active" : ""}`}
+                    onClick={() => applyPreset("agency")}
+                  >
+                    🚀 Agency
+                  </button>
+                </div>
+              </div>
+              <div className="calc-slider-group">
+                <div className="calc-slider-label-row">
+                  <span className="calc-slider-title">Searches a month</span>
+                  <span className="calc-slider-val">{calcRuns} searches</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="250"
+                  step="5"
+                  value={calcRuns}
+                  style={{ "--slider-pct": `${Math.round(((calcRuns - 5) / (250 - 5)) * 100)}%` } as React.CSSProperties}
+                  onChange={(e) => {
+                    setCalcRuns(Number(e.target.value));
+                    setActivePreset("");
+                  }}
+                  className="calc-slider-input"
+                />
+                <div className="calc-slider-scale">
+                  <span>5</span>
+                  <span>125</span>
+                  <span>250</span>
+                </div>
+              </div>
+
+              <div className="calc-slider-group">
+                <div className="calc-slider-label-row">
+                  <span className="calc-slider-title">Saved lists</span>
+                  <span className="calc-slider-val">{calcLists} lists</span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="100"
+                  step="2"
+                  value={calcLists}
+                  style={{ "--slider-pct": `${Math.round(((calcLists - 2) / (100 - 2)) * 100)}%` } as React.CSSProperties}
+                  onChange={(e) => {
+                    setCalcLists(Number(e.target.value));
+                    setActivePreset("");
+                  }}
+                  className="calc-slider-input"
+                />
+                <div className="calc-slider-scale">
+                  <span>2</span>
+                  <span>50</span>
+                  <span>100</span>
+                </div>
+              </div>
+
+              <div className="calc-slider-group">
+                <div className="calc-slider-label-row">
+                  <span className="calc-slider-title">Events at the same time</span>
+                  <span className="calc-slider-val">{calcEvents} events</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value={calcEvents}
+                  style={{ "--slider-pct": `${Math.round(((calcEvents - 1) / (20 - 1)) * 100)}%` } as React.CSSProperties}
+                  onChange={(e) => {
+                    setCalcEvents(Number(e.target.value));
+                    setActivePreset("");
+                  }}
+                  className="calc-slider-input"
+                />
+                <div className="calc-slider-scale">
+                  <span>1</span>
+                  <span>10</span>
+                  <span>20</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="calc-result-card">
+              <div className="calc-result-top">
+                <div className="calc-result-badge-row">
+                  <span className="calc-result-tier-pill">
+                    <Sparkles size={11} /> Recommended: {recommendation.tier.name}
+                  </span>
+                  {recommendation.isCustomVolume && (
+                    <span className="calc-result-tier-pill" style={{ background: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.35)", color: "#34d399", marginLeft: "6px" }}>
+                      Tailored Volume
+                    </span>
+                  )}
+                </div>
+                <div className="calc-result-price-box">
+                  <div className="calc-result-price-val">{recommendation.priceText}</div>
+                  <span className="calc-result-price-sub">
+                    for {calcRuns} searches · {calcLists} lists · {calcEvents} events
+                  </span>
+                </div>
+              </div>
+
+              <div className="calc-roi-stats">
+                <div className="calc-roi-stat-row">
+                  <span className="roi-stat-label">Time it would take by hand</span>
+                  <b className="roi-stat-val">~{recommendation.roiHours} hours</b>
+                </div>
+                <div className="calc-roi-stat-row">
+                  <span className="roi-stat-label">An agency would charge</span>
+                  <b className="roi-stat-val">₹{recommendation.manualCost.toLocaleString()}/mo</b>
+                </div>
+                <div className="calc-roi-stat-row">
+                  <span className="roi-stat-label">Dig's cost per list</span>
+                  <b className="roi-stat-val" style={{ color: "#4c6fff" }}>
+                    {recommendation.costPerList > 0 ? `₹${recommendation.costPerList} / list` : "Free"}
+                    <span style={{ fontSize: "10.5px", color: "var(--text-3)", marginLeft: "5px", fontWeight: 400 }}>
+                      (vs ₹1,250 agency)
+                    </span>
+                  </b>
+                </div>
+                <div className="calc-roi-stat-row savings">
+                  <span className="roi-stat-label">Estimated savings</span>
+                  <b className="roi-stat-val">
+                    +₹{recommendation.netSavings.toLocaleString()}/mo
+                    <span style={{ fontSize: "11px", color: "#10b981", marginLeft: "6px" }}>
+                      ({recommendation.savingsRatio}%)
+                    </span>
+                  </b>
+                </div>
+              </div>
+              <p className="calc-assumptions">
+                Based on assumed rates: ₹400 per search, ₹1,250 per list, ₹4,000 per event.
               </p>
-              {fit.id !== currentPlan && (
-                <button type="button" className="pricing-cta-btn primary" onClick={() => handleSelectPlan(fit)}>
-                  Choose {fit.name}
-                </button>
-              )}
-            </>
-          )}
+
+              <button
+                type="button"
+                className="pricing-cta-btn primary calc-cta"
+                onClick={() => handleSelectPlan(recommendation.tier)}
+              >
+                Choose {recommendation.tier.name} &rarr;
+              </button>
+            </div>
+          </div>
         </section>
+
 
         <div className="pricing-rules">
           <div>
@@ -260,6 +496,7 @@ export function Pricing() {
             onSuccess={handlePaymentSuccess}
           />
         )}
+      </div>
       </div>
     </AppWindow>
   );
