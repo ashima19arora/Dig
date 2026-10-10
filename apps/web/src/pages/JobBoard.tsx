@@ -814,7 +814,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                         />
                       </th>
                       <th className="n">#</th>
-                      {[...view.columns.map(([key, label]) => ({ key, label })), { key: "status", label: "Verification" }].map((column, index) => (
+                      {view.columns.map(([key, label]) => ({ key, label })).map((column, index) => (
                         <Fragment key={column.key}>
                         <th
                           style={{ cursor: "pointer" }}
@@ -844,7 +844,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   </thead>
                   <tbody>
                     {rows.map((record) => {
-                      const status = statusText(record);
                       const mark = outreach[record.canonicalEntityId];
                       const isRowSelected = selectedIds.has(record.id);
                       return (
@@ -956,21 +955,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                             }
                             return <Cell key={key} value={record.fields[key]} />;
                           })}
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span className={`st${status === "Needs review" ? " review" : status === "Verified" ? "" : " warn"}`}>
-                                {status}
-                              </span>
-                              {record.confidence !== undefined && (
-                                <span
-                                  className={`veracity-pill ${record.confidence >= 0.8 ? "high" : "med"}`}
-                                  title={`Veracity: ${Math.round(record.confidence * 100)}%`}
-                                >
-                                  {Math.round(record.confidence * 100)}%
-                                </span>
-                              )}
-                            </div>
-                          </td>
                           <NoteCell note={mark?.note ?? ""} who={mark?.updatedBy ?? null} onSave={(note) => void setOutreach(record.canonicalEntityId, { note })} />
                           <td style={{ textAlign: "center" }}>
                             <button
@@ -990,7 +974,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                     })}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={view.columns.length + 6} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
+                        <td colSpan={view.columns.length + 5}style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
                           Nothing matches this view.
                         </td>
                       </tr>
@@ -1338,6 +1322,10 @@ function RecordPanel(props: {
   const [primary, ...rest] = props.view.columns.map(([key]) => key);
   const name = record.fields[primary ?? ""] ?? record.label;
   const subtitle = rest.map((key) => record.fields[key]).filter(Boolean).slice(0, 2).join(" · ");
+  const statusWord = pending.length > 0
+    ? "Needs review"
+    : { verified: "Verified", needs_review: "Needs review", possible_duplicate: "Possible duplicate", incomplete: "Incomplete" }[record.status];
+  const veracity = record.confidence ?? 0.8;
 
   return (
     <aside className="detail">
@@ -1347,8 +1335,8 @@ function RecordPanel(props: {
             <ShieldCheck size={12} color="#10b981" />
             <span>Proof &amp; Evidence Dossier</span>
             <span className="eyebrow-sep">·</span>
-            <span className={`veracity-pill ${(record.confidence ?? 0.8) >= 0.8 ? "high" : "med"}`}>
-              {Math.round((record.confidence ?? 0.8) * 100)}% Veracity
+            <span className={`veracity-pill ${veracity >= 0.8 && statusWord === "Verified" ? "high" : "med"}`}>
+              {statusWord} · {Math.round(veracity * 100)}% Veracity
             </span>
           </div>
           <button
