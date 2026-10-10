@@ -282,6 +282,7 @@ export function mountAgents(
         pending: marks.filter((mark) => mark.status === "pending").length,
         interested: marks.filter((mark) => mark.status === "interested").length,
         declined: marks.filter((mark) => mark.status === "declined").length,
+        waiting: marks.filter((mark) => mark.status === "waiting").length,
       },
       workflowRuns: db.workflowRunCounts(authOf(req).workspace.id),
     });

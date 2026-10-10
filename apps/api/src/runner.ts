@@ -1,4 +1,4 @@
-import { collectDemo, describeFieldFor, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
+import { collectDemo, describeFieldFor, dropMalformedEmail, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
 import type { Response } from "express";
 import { collectLive } from "./collect-live.js";
 import { enrichCollected } from "./enrich.js";
@@ -91,7 +91,7 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
       collected = await withTimeout(collectLive(job.blueprint, now.toISOString()), RUN_TIMEOUT_MS);
     }
     // Keep the best-corroborated results when a run finds more than the cap.
-    collected = [...collected].sort((a, b) => b.sources.length - a.sources.length).slice(0, env.resultCap);
+    collected = [...collected].sort((a, b) => b.sources.length - a.sources.length).slice(0, env.resultCap).map(dropMalformedEmail);
     try {
       collected = await enrichCollected(collected, {
         demo: job.demo,

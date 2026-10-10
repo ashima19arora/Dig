@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  Hourglass,
   Copy,
   Download,
   ExternalLink,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { OUTREACH_STATUSES, type OutreachStatus } from "@dig/schemas";
 import {
   ACTIVE_STATES,
   api,
@@ -73,6 +75,8 @@ const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = 
   },
 };
 const LINK_FIELDS = new Set(["website", "profile_url"]);
+/** Search types where a first-contact email makes sense. Matches the server's pitchSupported. */
+const PITCH_INTENTS = new Set(["SPONSOR_LOOKUP", "JUDGE_LOOKUP", "LEAD_LOOKUP"]);
 
 const STAGE_LABELS: Record<string, string> = {
   QUEUED: "Queued",
@@ -87,14 +91,20 @@ const STAGE_LABELS: Record<string, string> = {
   ANNOTATING: "Writing notes",
 };
 
-type Tab = "all" | "review" | "verified" | "reachable" | "highConfidence" | "uncontacted";
+type Tab = "all" | "review" | "contacted" | "interested" | "waiting" | "declined" | "uncontacted";
 /** Keyed by canonicalEntityId: record ids change every version, the entity key does not. */
 type Panel = { kind: "record"; key: string } | { kind: "diff" } | null;
 
-function isReachable(record: DatasetRecord) {
-  const email = record.fields.email || record.contactability?.channels?.email?.value;
-  const phone = record.fields.phone || record.contactability?.channels?.phone?.value;
-  return Boolean(email?.trim() || phone?.trim());
+/**
+ * Every published value is copied from its source page, so a row is "Verified" unless it is a
+ * possible duplicate or missing a required field. How strongly it is sourced is the confidence %.
+ */
+function recordStatusWord(record: DatasetRecord): string {
+  if (record.status === "possible_duplicate") return "Possible duplicate";
+  // Older runs saved a bare domain ("iitmandi.ac.in") as the email, which failed validation. That is not a missing detail.
+  const domainAsEmail = Boolean(record.fields.email) && !getEmail(record);
+  if (record.status === "incomplete" && !domainAsEmail) return "Incomplete";
+  return "Verified";
 }
 
 function getEmail(record: DatasetRecord): string | null {
@@ -428,7 +438,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
         conflicts,
         outreach,
       });
-      notify("Executive PDF report generated successfully!", "info");
+      notify("PDF report downloaded", "info");
       setReport({ busy: false, error: null });
     } catch (error) {
       setReport({ busy: false, error: error instanceof Error ? error.message : "The PDF report couldn’t be generated." });
@@ -461,23 +471,27 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
 
   const job = jobQ.data?.job;
   const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
+  const pitchable = PITCH_INTENTS.has(job?.blueprint.intent ?? "");
 
+  /** Only a choice you must make: a re-run found a different value and Dig could not decide which is right. */
   const needsReview = (record: DatasetRecord) =>
-    (conflictsFor.get(record.id) ?? []).some((conflict) => conflict.status === "PENDING") || record.status !== "verified";
+    (conflictsFor.get(record.id) ?? []).some((conflict) => conflict.status === "PENDING");
 
   function statusText(record: DatasetRecord) {
-    if ((conflictsFor.get(record.id) ?? []).some((conflict) => conflict.status === "PENDING")) return "Needs review";
-    return { verified: "Verified", needs_review: "Needs review", possible_duplicate: "Possible duplicate", incomplete: "Incomplete" }[record.status];
+    if (needsReview(record)) return "Needs review";
+    return recordStatusWord(record);
   }
+
+  const outreachOf = (record: DatasetRecord): OutreachStatus => outreach[record.canonicalEntityId]?.status ?? "pending";
 
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     let list = records.filter((record) => {
+      const mark = outreachOf(record);
       if (tab === "review" && !needsReview(record)) return false;
-      if (tab === "verified" && needsReview(record)) return false;
-      if (tab === "reachable" && !isReachable(record)) return false;
-      if (tab === "highConfidence" && (record.confidence ?? 0) < 0.8) return false;
-      if (tab === "uncontacted" && (outreach[record.canonicalEntityId]?.status ?? "pending") !== "pending") return false;
+      if (tab === "contacted" && mark === "pending") return false;
+      if (tab === "uncontacted" && mark !== "pending") return false;
+      if ((tab === "interested" || tab === "waiting" || tab === "declined") && mark !== tab) return false;
       if (!needle) return true;
       return view.columns.some(([key]) =>
         (record.fields[key] ?? "").toLowerCase().includes(needle),
@@ -501,12 +515,12 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   }, [records, tab, search, sort, conflictsFor, outreach, view]);
 
   const reviewCount = useMemo(() => records.filter(needsReview).length, [records, conflictsFor]);
-  const reachableCount = useMemo(() => records.filter(isReachable).length, [records]);
-  const highConfidenceCount = useMemo(() => records.filter((r) => (r.confidence ?? 0) >= 0.8).length, [records]);
-  const uncontactedCount = useMemo(
-    () => records.filter((r) => (outreach[r.canonicalEntityId]?.status ?? "pending") === "pending").length,
-    [records, outreach],
-  );
+  const outreachCounts = useMemo(() => {
+    const counts: Record<OutreachStatus, number> = { pending: 0, waiting: 0, interested: 0, declined: 0 };
+    for (const record of records) counts[outreach[record.canonicalEntityId]?.status ?? "pending"] += 1;
+    return counts;
+  }, [records, outreach]);
+  const contactedCount = records.length - outreachCounts.pending;
 
   const toggleSelectRow = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -807,10 +821,12 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                   {(
                     [
                       ["all", "All", records.length],
-                      ["reachable", "✉️ Reachable", reachableCount],
-                      ["highConfidence", "⚡ High Veracity", highConfidenceCount],
-                      ["uncontacted", "🕒 Uncontacted", uncontactedCount],
-                      ...(reviewCount > 0 ? [["review", "⚠️ Needs review", reviewCount] as const] : []),
+                      ["contacted", "Contacted", contactedCount],
+                      ["interested", "Interested", outreachCounts.interested],
+                      ["waiting", "Waiting", outreachCounts.waiting],
+                      ["declined", "Declined", outreachCounts.declined],
+                      ["uncontacted", "Not contacted", outreachCounts.pending],
+                      ...(reviewCount > 0 ? [["review", "Needs review", reviewCount] as const] : []),
                     ] as const
                   ).map(([key, label, count]) => (
                     <button key={key} className={tab === key ? "on" : undefined} onClick={() => setTab(key as Tab)}>
@@ -999,17 +1015,19 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                           })}
                           <NoteCell note={mark?.note ?? ""} who={mark?.updatedBy ?? null} onSave={(note) => void setOutreach(record.canonicalEntityId, { note })} />
                           <td style={{ textAlign: "center" }}>
-                            <button
-                              className="btn"
-                              style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
-                              title="Draft AI Pitch"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPitchModalRecord(record);
-                              }}
-                            >
-                              <Sparkles size={11} color="#4c6fff" /> Pitch
-                            </button>
+                            {pitchable && (
+                              <button
+                                className="btn"
+                                style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
+                                title="Write a first-contact email"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPitchModalRecord(record);
+                                }}
+                              >
+                                <Mail size={11} /> Pitch
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1034,7 +1052,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                 conflicts={conflictsFor.get(selected.id) ?? []}
                 versionNumber={version.versionNumber}
                 outreachStatus={outreach[selected.canonicalEntityId]?.status ?? "pending"}
-                onDraftPitch={() => setPitchModalRecord(selected)}
+                onDraftPitch={pitchable ? () => setPitchModalRecord(selected) : undefined}
                 resolving={resolve.isPending ? resolve.variables?.id : undefined}
                 onResolve={(id, decision) => resolve.mutate({ id, decision })}
                 resolveError={resolve.isError ? resolve.error.message : null}
@@ -1054,6 +1072,9 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             <button className="btn" onClick={() => void batchSetOutreach("interested")}>
               <Check size={13} style={{ color: "#248a3d" }} /> Mark Interested
             </button>
+            <button className="btn" onClick={() => void batchSetOutreach("waiting")}>
+              <Hourglass size={13} /> Mark Waiting
+            </button>
             <button className="btn" onClick={() => void batchSetOutreach("pending")}>
               <Clock size={13} /> Mark Uncontacted
             </button>
@@ -1072,12 +1093,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
         )}
 
         {pitchModalRecord && (
-          <PitchModal
-            record={pitchModalRecord}
-            jobName={job?.name ?? "Event Partnership"}
-            query={job?.query ?? ""}
-            onClose={() => setPitchModalRecord(null)}
-          />
+          <PitchModal record={pitchModalRecord} jobId={jobId} onClose={() => setPitchModalRecord(null)} />
         )}
 
         <div className="board-foot">
@@ -1141,7 +1157,7 @@ function intentLabel(intent: string) {
   return `${/^[aeiou]/.test(words) ? "an" : "a"} ${words} lookup`;
 }
 
-type OutreachStatus = "pending" | "interested" | "declined";
+
 interface Outreach {
   status: OutreachStatus;
   note: string;
@@ -1149,27 +1165,65 @@ interface Outreach {
   updatedBy?: string | null;
 }
 
-const OUTREACH: Record<OutreachStatus, { label: string; next: OutreachStatus }> = {
-  pending: { label: "Not contacted", next: "interested" },
-  interested: { label: "Confirmed interested", next: "declined" },
-  declined: { label: "Declined", next: "pending" },
+const OUTREACH: Record<OutreachStatus, { label: string; hint: string }> = {
+  pending: { label: "Not contacted", hint: "No outreach yet" },
+  waiting: { label: "Waiting", hint: "They will get back to us" },
+  interested: { label: "Interested", hint: "Said yes or wants to talk" },
+  declined: { label: "Declined", hint: "Said no" },
 };
 
-/** Click to cycle: not contacted → interested → declined → not contacted. */
+function OutreachIcon({ status }: { status: OutreachStatus }) {
+  if (status === "interested") return <Check size={13} strokeWidth={3} />;
+  if (status === "declined") return <X size={13} strokeWidth={3} />;
+  if (status === "waiting") return <Hourglass size={12} />;
+  return <Clock size={12} />;
+}
+
+/** Click to open a small menu of the four outreach states. */
 function OutreachButton({ status, onChange }: { status: OutreachStatus; onChange: (next: OutreachStatus) => void }) {
+  const [open, setOpen] = useState(false);
   const meta = OUTREACH[status] ?? OUTREACH.pending;
   return (
-    <button
-      className={`ob ${status}`}
-      title={`${meta.label} — click to mark ${OUTREACH[meta.next].label.toLowerCase()}`}
-      aria-label={`Outreach: ${meta.label}. Click to change.`}
-      onClick={(click) => {
-        click.stopPropagation();
-        onChange(meta.next);
+    <div
+      className="ob-wrap"
+      onClick={(click) => click.stopPropagation()}
+      onBlur={(blur) => {
+        if (!blur.currentTarget.contains(blur.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      {status === "interested" ? <Check size={13} strokeWidth={3} /> : status === "declined" ? <X size={13} strokeWidth={3} /> : <Clock size={12} />}
-    </button>
+      <button
+        className={`ob ${status}`}
+        title={`${meta.label}: click to change`}
+        aria-label={`Outreach: ${meta.label}. Click to change.`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <OutreachIcon status={status} />
+      </button>
+      {open && (
+        <div className="ob-menu" role="menu">
+          {OUTREACH_STATUSES.map((option) => (
+            <button
+              key={option}
+              role="menuitemradio"
+              aria-checked={option === status}
+              className={option === status ? "on" : undefined}
+              onClick={() => {
+                setOpen(false);
+                if (option !== status) onChange(option);
+              }}
+            >
+              <span className={`ob ${option}`}><OutreachIcon status={option} /></span>
+              <span>
+                <b>{OUTREACH[option].label}</b>
+                <small>{OUTREACH[option].hint}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1242,7 +1296,7 @@ function DossierControlBar({
   record: DatasetRecord;
   primary?: string;
   outreachStatus: OutreachStatus;
-  onDraftPitch: () => void;
+  onDraftPitch?: () => void;
   copiedId: string | null;
   copyText: (text: string, id: string, e?: React.MouseEvent) => void;
 }) {
@@ -1303,14 +1357,12 @@ function DossierControlBar({
 
       {/* Balanced 3-action toolbar */}
       <div className="dossier-actions-strip">
-        <button
-          className="dossier-btn-hero"
-          onClick={onDraftPitch}
-          title="Draft personalized AI outreach pitch"
-        >
-          <Sparkles size={13} />
-          <span>Draft Pitch</span>
-        </button>
+        {onDraftPitch && (
+          <button className="dossier-btn-hero" onClick={onDraftPitch} title="Write a first-contact email">
+            <Mail size={13} />
+            <span>Draft Pitch</span>
+          </button>
+        )}
 
         <a
           href={searchUrl}
@@ -1343,7 +1395,7 @@ function RecordPanel(props: {
   conflicts: Conflict[];
   versionNumber: number;
   outreachStatus: OutreachStatus;
-  onDraftPitch: () => void;
+  onDraftPitch?: () => void;
   resolving?: string;
   onResolve: (id: string, decision: "NEW" | "OLD") => void;
   resolveError: string | null;
@@ -1357,9 +1409,7 @@ function RecordPanel(props: {
   const [primary, ...rest] = props.view.columns.map(([key]) => key);
   const name = record.fields[primary ?? ""] ?? record.label;
   const subtitle = rest.map((key) => record.fields[key]).filter(Boolean).slice(0, 2).join(" · ");
-  const statusWord = pending.length > 0
-    ? "Needs review"
-    : { verified: "Verified", needs_review: "Needs review", possible_duplicate: "Possible duplicate", incomplete: "Incomplete" }[record.status];
+  const statusWord = pending.length > 0 ? "Needs review" : recordStatusWord(record);
   const veracity = record.confidence ?? 0.8;
 
   return (
@@ -1370,7 +1420,10 @@ function RecordPanel(props: {
             <ShieldCheck size={12} color="#10b981" />
             <span>Proof &amp; Evidence Dossier</span>
             <span className="eyebrow-sep">·</span>
-            <span style={{ color: "var(--text)", textTransform: "none", letterSpacing: 0 }}>
+            <span
+              style={{ color: "var(--text)", textTransform: "none", letterSpacing: 0 }}
+              title="Confidence: how strongly this row is sourced (source authority, number of sources, freshness)"
+            >
               <b>{statusWord}</b> {Math.round(veracity * 100)}%
             </span>
           </div>
@@ -1506,127 +1559,133 @@ function RecordPanel(props: {
   );
 }
 
-function PitchModal({
-  record,
-  jobName,
-  query,
-  onClose,
-}: {
-  record: DatasetRecord;
-  jobName: string;
-  query: string;
-  onClose: () => void;
-}) {
-  const companyName = record.fields.company_name || record.label || "Partnership Team";
-  const contactName = record.fields.contact || record.fields.person_name || "";
+interface PitchSender {
+  name: string;
+  role: string;
+  organization: string;
+  ask: string;
+}
+
+const SENDER_KEY = "dig-pitch-sender";
+
+function loadSender(): PitchSender {
+  const empty = { name: "", role: "", organization: "", ask: "" };
+  try {
+    return { ...empty, ...(JSON.parse(localStorage.getItem(SENDER_KEY) ?? "{}") as Partial<PitchSender>) };
+  } catch {
+    return empty;
+  }
+}
+
+/** A first-contact email written from the row's sourced facts, your event, and who you are. Always editable. */
+function PitchModal({ record, jobId, onClose }: { record: DatasetRecord; jobId: string; onClose: () => void }) {
+  const recipient = record.fields.person_name || record.fields.contact || record.fields.company_name || record.label || "this contact";
   const email = getEmail(record);
-  const eventName = record.fields.event_name || jobName || "our upcoming event";
-
-  const greeting = contactName ? `Hi ${contactName},` : `Hi ${companyName} team,`;
-  const defaultSubject = `Partnership opportunity: ${eventName} & ${companyName}`;
-  const defaultBody = `${greeting}
-
-I hope this message finds you well. I'm reaching out from the team organizing ${eventName}.
-
-We've been following ${companyName}'s work and innovative focus, and we believe there is strong alignment between your developer & technology initiatives and our audience.
-
-We are bringing together top engineers, creators, and leaders, and we would love to discuss welcoming ${companyName} as a key sponsor and partner.
-
-Could we schedule a brief 10-minute chat this week to share our deck and sponsorship tiers?
-
-Best regards,
-Partnership Director, ${eventName}`;
-
-  const [subject, setSubject] = useState(defaultSubject);
-  const [body, setBody] = useState(defaultBody);
+  const linkedin = record.fields.linkedin;
+  const [sender, setSender] = useState<PitchSender>(loadSender);
+  const [draft, setDraft] = useState<{ subject: string; body: string } | null>(null);
+  const [eventName, setEventName] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const write = useMutation({
+    mutationFn: () =>
+      api<{ pitch: { subject: string; body: string }; event: { name: string } | null }>(`/api/jobs/${jobId}/pitch`, {
+        method: "POST",
+        body: JSON.stringify({ entity: record.canonicalEntityId, sender }),
+      }),
+    onSuccess: (result) => {
+      setDraft(result.pitch);
+      setEventName(result.event?.name ?? null);
+      try {
+        localStorage.setItem(SENDER_KEY, JSON.stringify(sender));
+      } catch {
+        // Saving the sender is a convenience only.
+      }
+    },
+  });
+
+  const edit = (key: keyof PitchSender) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setSender((current) => ({ ...current, [key]: event.target.value }));
+
   const copyPitch = () => {
-    void navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+    if (!draft) return;
+    void navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
     setCopied(true);
-    notify(`Copied pitch for ${companyName} to clipboard`, "info");
+    notify(`Copied the email for ${recipient}`, "info");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const mailtoHref = email
-    ? `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  const mailtoHref = draft && email
+    ? `mailto:${email}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`
     : null;
 
   return (
     <div className="pitch-modal-overlay" onClick={onClose}>
       <div className="pitch-modal" onClick={(e) => e.stopPropagation()}>
         <div className="pitch-modal-head">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <CompanyLogo record={record} name={companyName} className="dossier-avatar" />
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Draft AI Outreach Pitch</div>
-              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                Personalized for {companyName} {email ? `· ${email}` : "· (No email listed)"}
-              </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Email to {recipient}</div>
+            <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+              {email ?? (linkedin ? "No email found · send on LinkedIn" : "No email found")}
+              {eventName ? ` · for ${eventName}` : ""}
             </div>
           </div>
-          <button className="btn" onClick={onClose} aria-label="Close modal">
+          <button className="btn" onClick={onClose} aria-label="Close">
             <X size={14} />
           </button>
         </div>
 
         <div className="pitch-modal-body">
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-2)", display: "block", marginBottom: 4 }}>
-              Subject
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: 6,
-                border: "1px solid var(--hairline)",
-                background: "var(--card)",
-                color: "var(--text)",
-                fontSize: 13,
-              }}
-            />
+          <div className="pitch-sender">
+            <input value={sender.name} onChange={edit("name")} placeholder="Your name" maxLength={200} />
+            <input value={sender.role} onChange={edit("role")} placeholder="Your role" maxLength={200} />
+            <input value={sender.organization} onChange={edit("organization")} placeholder="Your organization or team" maxLength={200} />
+            <input value={sender.ask} onChange={edit("ask")} placeholder="What you are asking for or offering (one line)" maxLength={300} />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+            Written only from what Dig found about {recipient}, your event details, and the lines above. Review before sending.
           </div>
 
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-2)", display: "block", marginBottom: 4 }}>
-              Pitch Message
-            </label>
-            <textarea
-              rows={11}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 6,
-                border: "1px solid var(--hairline)",
-                background: "var(--card)",
-                color: "var(--text)",
-                fontSize: 12.5,
-                lineHeight: 1.5,
-                resize: "vertical",
-                fontFamily: "inherit",
-              }}
-            />
-          </div>
+          {write.isError && <div className="pitch-error">{write.error.message}</div>}
+
+          {draft && (
+            <>
+              <input
+                className="pitch-field"
+                value={draft.subject}
+                onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                aria-label="Subject"
+              />
+              <textarea
+                className="pitch-field"
+                rows={12}
+                value={draft.body}
+                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                aria-label="Email body"
+              />
+            </>
+          )}
         </div>
 
         <div className="pitch-modal-footer">
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            {email ? `Recipient: ${email}` : "No direct email: copy and send via LinkedIn"}
-          </div>
+          <button className="btn" onClick={() => write.mutate()} disabled={write.isPending}>
+            {write.isPending ? "Writing…" : draft ? "Rewrite" : "Write email"}
+          </button>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" onClick={copyPitch}>
-              {copied ? <Check size={13} color="#248a3d" /> : <Copy size={13} />}
-              <span>{copied ? "Copied" : "Copy Pitch"}</span>
-            </button>
+            {draft && (
+              <button className="btn" onClick={copyPitch}>
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                <span>{copied ? "Copied" : "Copy"}</span>
+              </button>
+            )}
+            {draft && linkedin && !mailtoHref && (
+              <a href={linkedin} target="_blank" rel="noreferrer" className="btn" style={{ textDecoration: "none" }}>
+                <ExternalLink size={13} /> Open LinkedIn
+              </a>
+            )}
             {mailtoHref && (
               <a href={mailtoHref} className="btn blue" style={{ textDecoration: "none" }}>
-                <Mail size={13} /> Open in Email App
+                <Mail size={13} /> Open in email
               </a>
             )}
           </div>
@@ -1685,7 +1744,9 @@ function ContactPaths({
             key === "linkedin"
               ? record.fields.linkedin || (record.fields.profile_url?.includes("linkedin.com") ? record.fields.profile_url : null)
               : null;
-          const effectiveValue = item.value || directLinkedin;
+          // A saved "email" without an @ (a bare domain from an older run) is not a contact path.
+          const malformedEmail = key === "email" && Boolean(item.value) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.value ?? "");
+          const effectiveValue = malformedEmail ? null : item.value || directLinkedin;
           const found = Boolean(effectiveValue) && (item.status !== "NOT_FOUND" || Boolean(directLinkedin));
           const href = found && effectiveValue && /^https?:\/\//i.test(effectiveValue) ? effectiveValue : null;
           const isCopyable = (key === "email" || key === "phone") && found && Boolean(effectiveValue);

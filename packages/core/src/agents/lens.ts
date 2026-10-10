@@ -6,7 +6,7 @@ export interface LensInput {
   removed: number;
   changed: number;
   conflicts: number;
-  outreach: { pending: number; interested: number; declined: number };
+  outreach: { pending: number; interested: number; declined: number; waiting?: number };
   workflowRuns: { completed: number; failed: number };
   firstVersion?: boolean;
   unchanged?: number;
@@ -86,7 +86,7 @@ export function buildLensReport(input: LensInput): LensReport {
   const contactable = records.filter((record) => record.contactabilityScore > 0).length;
   const highPriority = records.filter((record) => record.status === "verified" && record.contactabilityScore >= 70 && record.confidence >= 0.8).length;
   const avgConfidence = total ? Math.round((records.reduce((sum, record) => sum + record.confidence, 0) / total) * 100) : 0;
-  const contacted = input.outreach.interested + input.outreach.declined + input.outreach.pending;
+  const contacted = input.outreach.interested + input.outreach.declined + input.outreach.pending + (input.outreach.waiting ?? 0);
   const responded = input.outreach.interested + input.outreach.declined;
   const runs = input.workflowRuns.completed + input.workflowRuns.failed;
   const missing = records.filter((record) => record.contactabilityScore === 0).length;

@@ -9,6 +9,7 @@ export * from "./jev.js";
 export * from "./jev-api.js";
 export * from "./normalize.js";
 export * from "./pipeline.js";
+export * from "./pitch.js";
 export * from "./rank.js";
 export * from "./types.js";
 export * from "./util.js";

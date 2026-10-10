@@ -99,7 +99,7 @@ export const renameJobSchema = z.object({
   name: z.string().trim().min(1, "Give the search a name.").max(180),
 });
 
-export const OUTREACH_STATUSES = ["pending", "interested", "declined"] as const;
+export const OUTREACH_STATUSES = ["pending", "waiting", "interested", "declined"] as const;
 export type OutreachStatus = (typeof OUTREACH_STATUSES)[number];
 
 export const outreachUpdateSchema = z.object({

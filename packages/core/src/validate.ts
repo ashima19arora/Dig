@@ -13,6 +13,21 @@ export interface ValidationResult {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
+
+/**
+ * Google Scholar says "Verified email at iitmandi.ac.in", and extraction can copy just the domain
+ * into the email field. A value without an @ is not an email: drop it, and when the row has no
+ * website, keep the domain as one, so a contact lookup can search that domain for the real address.
+ */
+export function dropMalformedEmail<T extends { fields: Record<string, string> }>(record: T): T {
+  const email = record.fields.email?.trim();
+  if (!email || EMAIL.test(email)) return record;
+  const { email: _dropped, ...fields } = record.fields;
+  const domain = email.replace(/^https?:\/\//i, "").replace(/\/.*$/, "").toLowerCase();
+  if (DOMAIN.test(domain) && !fields.website?.trim()) fields.website = `https://${domain}`;
+  return { ...record, fields };
+}
 
 export function isValidUrl(value: string): boolean {
   try {

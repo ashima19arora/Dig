@@ -3,6 +3,23 @@ import { buildBlueprint } from "./blueprint.js";
 import { collectDemo, DEMO_NOW } from "./demo-data.js";
 import { containmentDecision } from "./jev.js";
 import { filledCount, runPipeline } from "./pipeline.js";
+import { dropMalformedEmail } from "./validate.js";
+
+describe("dropMalformedEmail", () => {
+  it("turns a Scholar 'verified email at' domain into a website, not an email", () => {
+    expect(dropMalformedEmail({ fields: { person_name: "Padmanabhan Rajan", email: "iitmandi.ac.in" } }).fields).toEqual({
+      person_name: "Padmanabhan Rajan",
+      website: "https://iitmandi.ac.in",
+    });
+  });
+
+  it("keeps a real email and an existing website", () => {
+    const real = { fields: { email: "a@b.com" } };
+    expect(dropMalformedEmail(real)).toBe(real);
+    expect(dropMalformedEmail({ fields: { email: "google.com", website: "https://deepmind.com" } }).fields).toEqual({ website: "https://deepmind.com" });
+    expect(dropMalformedEmail({ fields: { email: "n/a" } }).fields).toEqual({});
+  });
+});
 
 describe("containmentDecision", () => {
   it("keeps the fuller value when the new one is part of the old", () => {

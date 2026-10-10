@@ -1,8 +1,8 @@
 import { rmSync } from "node:fs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import * as XLSX from "xlsx";
-import { ZodError } from "zod";
-import { buildBlueprint, renderCsv, suggestJobName } from "@dig/core";
+import { z, ZodError } from "zod";
+import { buildBlueprint, cleanPitch, PITCH_SYSTEM, pitchSupported, pitchUserMessage, renderCsv, suggestJobName } from "@dig/core";
 import { mountAgents } from "./agents-http.js";
 import {
   createJobSchema,
@@ -23,6 +23,7 @@ import {
 } from "@dig/schemas";
 import { currentAuth, endSession, hashPassword, requireAuth, startSession, verifyPassword, type AuthedRequest } from "./auth.js";
 import { labelOf, DigDb } from "./db.js";
+import { chatJson, llmLanes } from "./collect-live.js";
 import { env } from "./env.js";
 import { parseQuery } from "./intent-llm.js";
 import { renderReport } from "./report.js";
@@ -613,6 +614,46 @@ async function main() {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
     res.send([headers.join(","), ...csvRows].join("\n"));
+  });
+
+  /** A first-contact email for one row, written only from the row's sourced facts, the event, and the sender. */
+  app.post("/api/jobs/:id/pitch", async (req, res, next) => {
+    try {
+      const job = ownJob(req, res);
+      if (!job) return;
+      if (!pitchSupported(job.blueprint.intent)) return fail(res, req, 422, "NO_PITCH", "Pitches are for sponsors, judges and speakers, and leads.");
+      const text = z.string().trim().max(200).default("");
+      const body = z
+        .object({
+          entity: z.string().min(1).max(300),
+          sender: z.object({ name: text, role: text, organization: text, ask: z.string().trim().max(300).default("") }),
+        })
+        .parse(req.body);
+      const version = db.latestVersion(job.id);
+      const record = version ? db.recordsForVersion(version.id).find((item) => item.canonicalEntityId === body.entity) : undefined;
+      if (!record) return fail(res, req, 404, "NOT_FOUND", "That row isn’t in the latest version of this search.");
+      const user = authOf(req).user;
+      const event = db.listEvents(user.id).find((item) => Object.values(item.jobs).includes(job.id));
+      const lanes = llmLanes();
+      const deadline = Date.now() + 25_000;
+      const raw = await chatJson<unknown>(lanes[0]!, {
+        system: PITCH_SYSTEM,
+        user: pitchUserMessage({
+          intent: job.blueprint.intent,
+          recipient: record.fields,
+          event: event ? { name: event.name, date: event.date, description: event.description } : null,
+          sender: body.sender,
+        }),
+        maxTokens: 1200,
+        deadline,
+        label: "pitch",
+      });
+      const pitch = cleanPitch(raw);
+      if (!pitch) return fail(res, req, 503, "PITCH_UNAVAILABLE", "Couldn’t write a draft right now. Try again in a few seconds.");
+      ok(res, req, { pitch, event: event ? { name: event.name } : null });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/api/jobs/:id/outreach", (req, res) => {
