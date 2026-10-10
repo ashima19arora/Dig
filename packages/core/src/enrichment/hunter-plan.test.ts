@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestSourcedEmail, hunterLinkedin, planHunterLookup } from "./hunter-plan.js";
+import { bestSourcedEmail, hunterLinkedin, nextBackupContact, planHunterLookup, rankedHunterContacts } from "./hunter-plan.js";
 
 describe("planHunterLookup", () => {
   it("does not spend a credit when research already has an email", () => {
@@ -100,5 +100,28 @@ describe("hunterLinkedin", () => {
     expect(hunterLinkedin("https://www.linkedin.com/in/janedoe")).toBe("https://www.linkedin.com/in/janedoe");
     expect(hunterLinkedin("janedoe")).toBeNull();
     expect(hunterLinkedin("http://linkedin.com/in/janedoe")).toBeNull();
+  });
+});
+
+describe("backup contacts from one domain search", () => {
+  const rows = [
+    { value: "priya@geekroom.in", first_name: "Priya", last_name: "Sharma", position: "Partnerships Lead", verification: { status: "valid" }, confidence: 96, sources: [{ uri: "https://geekroom.in/team" }] },
+    { value: "rahul@geekroom.in", first_name: "Rahul", last_name: "Mehta", position: "Marketing Manager", confidence: 88, linkedin: "https://www.linkedin.com/in/rahulmehta", sources: [{ uri: "https://geekroom.in/blog" }] },
+    { value: "guess@geekroom.in", first_name: "No", last_name: "Source", confidence: 99, sources: [] },
+    { value: "info@geekroom.in", confidence: 90, sources: [{ uri: "https://geekroom.in/contact" }] },
+    { value: "anita@geekroom.in", first_name: "Anita", last_name: "Rao", position: "Community", verification: { status: "valid" }, confidence: 70, sources: [{ uri: "https://geekroom.in/about" }] },
+  ];
+
+  it("keeps named, sourced people only, best first", () => {
+    const people = rankedHunterContacts(rows);
+    expect(people.map((person) => person.name)).toEqual(["Priya Sharma", "Anita Rao", "Rahul Mehta"]);
+    expect(people[2]).toMatchObject({ position: "Marketing Manager", linkedin: "https://www.linkedin.com/in/rahulmehta", verified: false });
+  });
+
+  it("hands out the next person not already shown, one at a time", () => {
+    const people = rankedHunterContacts(rows);
+    expect(nextBackupContact(people, ["PRIYA@geekroom.in"])?.name).toBe("Anita Rao");
+    expect(nextBackupContact(people, ["priya@geekroom.in", "anita@geekroom.in"])?.name).toBe("Rahul Mehta");
+    expect(nextBackupContact(people, people.map((person) => person.email))).toBeNull();
   });
 });

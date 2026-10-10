@@ -37,6 +37,7 @@ export function pitchSupported(intent: IntentId): boolean {
 const RECIPIENT_FIELDS: Array<[string, string]> = [
   ["person_name", "name"],
   ["contact", "contact person"],
+  ["contact_role", "contact person's role"],
   ["company_name", "company"],
   ["affiliation", "affiliation"],
   ["category", "what the company does"],

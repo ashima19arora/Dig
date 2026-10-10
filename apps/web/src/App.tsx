@@ -12,7 +12,7 @@ import { AgentsHome } from "./pages/Agents";
 import { Flow } from "./pages/Flow";
 import { Lens } from "./pages/Lens";
 import { Merger } from "./pages/Merger";
-import { Mission } from "./pages/Mission";
+import { Kickoff } from "./pages/Kickoff";
 import { Pricing } from "./pages/Pricing";
 import { Profile } from "./pages/Profile";
 import { Stack } from "./pages/Stack";
@@ -41,7 +41,8 @@ export function App() {
       <Route path="/agents" element={app(<AgentsHome />)} />
       <Route path="/agents/flow" element={app(<Flow />)} />
       <Route path="/agents/lens" element={app(<Lens />)} />
-      <Route path="/agents/mission" element={app(<Mission />)} />
+      <Route path="/agents/kickoff" element={app(<Kickoff />)} />
+      <Route path="/agents/mission" element={<Navigate to="/agents/kickoff" replace />} />
       <Route path="/agents/merger" element={app(<Merger />)} />
       <Route path="/events/:eventId" element={app(<EventFolder />)} />
       <Route path="/events/:eventId/:folder" element={app(<FolderBoard />)} />

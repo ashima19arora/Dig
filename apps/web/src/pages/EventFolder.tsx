@@ -1,6 +1,6 @@
 import { BookOpen, Pencil, Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { FolderKey } from "@dig/schemas";
 import { ApiError, api, type JobSummary } from "../api";
 import { AppWindow, FolderTile, NewFolderIcon } from "../components/Shell";
@@ -15,6 +15,8 @@ export function EventFolder() {
   const [asking, setAsking] = useState(false);
   const [filter, setFilter] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const ask = params.get("ask") ?? "";
 
   useEffect(() => {
     if (event) void touchEvent(event.id);
@@ -105,7 +107,16 @@ export function EventFolder() {
           }}
         />
       )}
-      {asking && <NewQuerySheet event={event} onClose={() => setAsking(false)} />}
+      {(asking || ask) && (
+        <NewQuerySheet
+          event={event}
+          initialQuery={ask || undefined}
+          onClose={() => {
+            setAsking(false);
+            if (ask) setParams({}, { replace: true });
+          }}
+        />
+      )}
     </AppWindow>
   );
 }

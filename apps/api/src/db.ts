@@ -194,6 +194,41 @@ export class DigDb {
     return event ? `${event.id}:${intent}` : `job:${jobId}`;
   }
 
+  kickoffPlan(eventId: string, userId: string) {
+    const row = this.get<{ request: string; plan_json: string; done_json: string; updated_at: string }>(
+      "SELECT request, plan_json, done_json, updated_at FROM kickoff_plans WHERE event_id = ? AND user_id = ?",
+      eventId,
+      userId,
+    );
+    if (!row) return null;
+    return { request: row.request, plan: JSON.parse(row.plan_json) as unknown, done: JSON.parse(row.done_json) as string[], updatedAt: row.updated_at };
+  }
+
+  /** A new plan replaces the old one, and its checkboxes start empty. */
+  saveKickoffPlan(eventId: string, userId: string, request: string, plan: unknown) {
+    const now = new Date().toISOString();
+    this.run(
+      `INSERT INTO kickoff_plans (event_id, user_id, request, plan_json, done_json, created_at, updated_at) VALUES (?, ?, ?, ?, '[]', ?, ?)
+       ON CONFLICT(event_id) DO UPDATE SET request = excluded.request, plan_json = excluded.plan_json, done_json = '[]', updated_at = excluded.updated_at`,
+      eventId,
+      userId,
+      request,
+      JSON.stringify(plan),
+      now,
+      now,
+    );
+  }
+
+  setKickoffDone(eventId: string, userId: string, done: string[]) {
+    this.run(
+      "UPDATE kickoff_plans SET done_json = ?, updated_at = ? WHERE event_id = ? AND user_id = ?",
+      JSON.stringify([...new Set(done)]),
+      new Date().toISOString(),
+      eventId,
+      userId,
+    );
+  }
+
   /** Extra contacts per company in a search, oldest first, so they show in the order they were added. */
   extraContacts(jobId: string) {
     const rows = this.all<{ canonical_entity_id: string; email: string; name: string; position: string; linkedin: string | null; source_url: string | null; provider: string; verified: number; created_at: string }>(

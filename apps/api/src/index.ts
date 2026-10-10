@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import * as XLSX from "xlsx";
 import { z, ZodError } from "zod";
-import { acceptedHunterDomain, buildBlueprint, cleanPitch, nextBackupContact, PITCH_SYSTEM, pitchSupported, pitchUserMessage, renderCsv, suggestJobName } from "@dig/core";
+import { acceptedHunterDomain, buildBlueprint, cleanKickoffPlan, cleanPitch, KICKOFF_SYSTEM, kickoffUserMessage, nextBackupContact, PITCH_SYSTEM, pitchSupported, pitchUserMessage, renderCsv, suggestJobName } from "@dig/core";
 import { mountAgents } from "./agents-http.js";
 import {
   createJobSchema,
@@ -585,7 +585,7 @@ async function main() {
         Email: r.email,
         Phone: r.phone,
         Website: r.website,
-        Veracity: `${Math.round(r.confidence * 100)}%`,
+        Confidence: `${Math.round(r.confidence * 100)}%`,
         Status: r.status,
         "Origin Datasets": r.searches,
         "Outreach Status": r.outreach_status,
@@ -602,7 +602,7 @@ async function main() {
     }
 
     // Default: CSV
-    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Veracity", "Status", "Origin Datasets", "Outreach Status", "Outreach Note", "Sources"];
+    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Confidence", "Status", "Origin Datasets", "Outreach Status", "Outreach Note", "Sources"];
     const csvRows = outputRecords.map((r) => [
       r.rank,
       JSON.stringify(r.name ?? ""),
@@ -664,6 +664,63 @@ async function main() {
     } catch (error) {
       next(error);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Kickoff: a dated plan for an event, saved with the event.
+  // ---------------------------------------------------------------------------
+
+  app.get("/api/kickoff/:eventId", (req, res) => {
+    const user = authOf(req).user;
+    if (!db.eventFor(req.params.eventId, user.id)) return fail(res, req, 404, "NOT_FOUND", "That event doesn’t exist or isn’t yours.");
+    ok(res, req, { saved: db.kickoffPlan(req.params.eventId, user.id) });
+  });
+
+  /**
+   * Plans an event from the organizer's own words. With no event chosen, it creates one from the plan,
+   * so a first-time organizer goes from nothing to an event with a plan in one step.
+   */
+  app.post("/api/kickoff", async (req, res, next) => {
+    try {
+      const user = authOf(req).user;
+      const body = z.object({ request: z.string().trim().min(10, "Tell Kickoff a little about the event.").max(2000), eventId: z.string().max(100).optional() }).parse(req.body);
+      const existing = body.eventId ? db.eventFor(body.eventId, user.id) : undefined;
+      if (body.eventId && !existing) return fail(res, req, 404, "NOT_FOUND", "That event doesn’t exist or isn’t yours.");
+      const today = new Date();
+      const raw = await chatJson<unknown>(llmLanes()[0]!, {
+        system: KICKOFF_SYSTEM,
+        user: kickoffUserMessage({
+          today,
+          request: body.request,
+          event: existing ? { name: existing.name, date: existing.date, description: existing.description, targets: existing.targets } : null,
+        }),
+        maxTokens: 3000,
+        deadline: Date.now() + 45_000,
+        label: "kickoff",
+      });
+      const plan = cleanKickoffPlan(raw, today, existing?.name);
+      if (!plan) return fail(res, req, 503, "PLAN_UNAVAILABLE", "Couldn’t write a plan right now. Try again in a few seconds.");
+      const event =
+        existing ??
+        db.createEvent(user.id, {
+          name: plan.eventName,
+          description: body.request.slice(0, 500),
+          date: plan.eventDate ? new Date(`${plan.eventDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "",
+          targets: "",
+        });
+      db.saveKickoffPlan(event.id, user.id, body.request, plan);
+      ok(res, req, { event, saved: db.kickoffPlan(event.id, user.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/kickoff/:eventId/done", (req, res) => {
+    const user = authOf(req).user;
+    if (!db.kickoffPlan(req.params.eventId, user.id)) return fail(res, req, 404, "NOT_FOUND", "There is no plan for that event yet.");
+    const body = z.object({ done: z.array(z.string().max(20)).max(40) }).parse(req.body);
+    db.setKickoffDone(req.params.eventId, user.id, body.done);
+    ok(res, req, { saved: db.kickoffPlan(req.params.eventId, user.id) });
   });
 
   /** Extra people per company, added with "Find another contact". */

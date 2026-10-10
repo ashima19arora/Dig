@@ -1436,7 +1436,7 @@ function FlowEditor() {
   }, [nodes, edges, selected, setNodes, setEdges, snapshot, zoomIn, zoomOut, fitView, zoomTo]);
 
   return (
-    <AppWindow crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Agents", to: "/agents" }, { label: "Flow" }]} sidebar="agents" status={<span>{run ? (run.status === "WAITING" ? "Waiting for your approval" : `${run.mode} run · ${run.status}`) : "Drag a step anywhere. Connect the dots. Email and messages wait for approval."}</span>}>
+    <AppWindow crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Toolkit", to: "/agents" }, { label: "Flow" }]} sidebar="agents" status={<span>{run ? (run.status === "WAITING" ? "Waiting for your approval" : `${run.mode} run · ${run.status}`) : "Drag a step anywhere. Connect the dots. Email and messages wait for approval."}</span>}>
       <div className="board">
         {approval && (
           <div className="run-banner">

@@ -279,6 +279,33 @@ CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
 
 -- Outreach tracking: who has been contacted, per result. Scoped to the event folder a search is filed in
 -- ("<event id>:<intent>"), or to the search itself when it isn't filed, so it survives re-runs.
+-- Kickoff: one dated plan per event, and which of its tasks are done.
+CREATE TABLE IF NOT EXISTS kickoff_plans (
+  event_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  request TEXT NOT NULL DEFAULT '',
+  plan_json TEXT NOT NULL,
+  done_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Extra people at a company, added one at a time when the first contact does not reply.
+-- Keyed by the company, so they survive re-runs of the search.
+CREATE TABLE IF NOT EXISTS extra_contacts (
+  job_id TEXT NOT NULL,
+  canonical_entity_id TEXT NOT NULL,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  position TEXT NOT NULL DEFAULT '',
+  linkedin TEXT,
+  source_url TEXT,
+  provider TEXT NOT NULL,
+  verified INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (job_id, canonical_entity_id, email)
+);
+
 CREATE TABLE IF NOT EXISTS outreach (
   scope TEXT NOT NULL,
   canonical_entity_id TEXT NOT NULL,

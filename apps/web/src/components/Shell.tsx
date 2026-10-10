@@ -147,11 +147,11 @@ function Sidebar({ active }: { active: SideView }) {
           </Link>
         ))}
       </div>
-      <h6>Agents</h6>
+      <h6>Toolkit</h6>
       <div className="side-group">
         <Link to="/agents" className={`side-item${active === "agents" || active === "flow" || active === "lens" || active === "mission" || active === "merger" ? " active" : ""}`}>
           <Folder size={16} />
-          Agents
+          Toolkit
           <span className="count">4</span>
         </Link>
       </div>

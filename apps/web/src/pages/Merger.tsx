@@ -323,7 +323,7 @@ export function Merger() {
 
   const exportCsv = () => {
     if (filteredRecords.length === 0) return;
-    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Veracity", "Status", "Origin Datasets"];
+    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Confidence", "Status", "Origin Datasets"];
     const rows = filteredRecords.map((r, i) =>
       [
         i + 1,
@@ -360,7 +360,7 @@ export function Merger() {
       email: r.email,
       phone: r.phone,
       website: r.website,
-      veracity: Math.round(r.confidence * 100) / 100,
+      confidence: Math.round(r.confidence * 100) / 100,
       status: r.status,
       origins: r.origins,
     }));
@@ -377,7 +377,7 @@ export function Merger() {
 
   const copyTsv = () => {
     if (filteredRecords.length === 0) return;
-    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Veracity", "Status", "Origin Datasets"];
+    const headers = ["Rank", "Entity", "Category", "Contact", "Email", "Phone", "Website", "Confidence", "Status", "Origin Datasets"];
     const rows = filteredRecords.map((r, i) =>
       [
         i + 1,
@@ -409,7 +409,7 @@ export function Merger() {
 
   return (
     <AppWindow
-      crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Agents", to: "/agents" }, { label: "Merger" }]}
+      crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }, { label: "Toolkit", to: "/agents" }, { label: "Merger" }]}
       sidebar="merger"
       status={`${allMergedRecords.length} merged records from ${selectedJobIds.size} datasets`}
     >
@@ -587,9 +587,7 @@ export function Merger() {
                 <small>The same company in several lists becomes one row, with its emails and phones combined.</small>
               </span>
             </label>
-            <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-              {isLoadingDatasets ? "Syncing datasets…" : "Ready to merge"}
-            </div>
+            {isLoadingDatasets && <div style={{ fontSize: 11, color: "var(--text-3)", marginLeft: "auto" }}>Syncing lists…</div>}
           </div>
         </div>
 
@@ -668,7 +666,6 @@ export function Merger() {
                     <th style={{ minWidth: 180 }}>Email</th>
                     <th style={{ minWidth: 120 }}>Phone</th>
                     <th style={{ minWidth: 140 }}>Website</th>
-                    <th style={{ minWidth: 80, textAlign: "center" }}>Veracity</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -741,20 +738,12 @@ export function Merger() {
                             <span style={{ color: "var(--text-3)" }}>—</span>
                           )}
                         </td>
-                        <td style={{ textAlign: "center" }}>
-                          <span
-                            className={`veracity-pill ${item.confidence >= 0.8 ? "high" : "med"}`}
-                            title={`Confidence: ${Math.round(item.confidence * 100)}%`}
-                          >
-                            {Math.round(item.confidence * 100)}%
-                          </span>
-                        </td>
                       </tr>
                     );
                   })}
                   {filteredRecords.length === 0 && (
                     <tr>
-                      <td colSpan={9} style={{ textAlign: "center", color: "var(--text-3)", padding: 48 }}>
+                      <td colSpan={8} style={{ textAlign: "center", color: "var(--text-3)", padding: 48 }}>
                         {selectedJobIds.size === 0
                           ? "Select at least one dataset above to preview the merged records."
                           : "No records match your current tab or search filter."}
@@ -854,14 +843,13 @@ export function Merger() {
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 6 }}>VERACITY &amp; STATUS</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className={`veracity-pill ${selectedRow.confidence >= 0.8 ? "high" : "med"}`}>
-                      {Math.round(selectedRow.confidence * 100)}% Veracity
-                    </span>
-                    <span style={{ fontSize: 12, textTransform: "capitalize", color: "var(--text-2)" }}>
-                      Status: <b>{selectedRow.status}</b>
-                    </span>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 6 }}>STATUS</div>
+                  <div
+                    style={{ fontSize: 13, color: "var(--text)" }}
+                    title="Confidence: how strongly this row is sourced (source authority, number of sources, freshness)"
+                  >
+                    <b>{selectedRow.status === "possible_duplicate" ? "Possible duplicate" : "Verified"}</b>{" "}
+                    {Math.round(selectedRow.confidence * 100)}%
                   </div>
                 </div>
               </div>

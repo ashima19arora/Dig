@@ -150,6 +150,8 @@ export const eventUpdateSchema = eventInputSchema.partial().extend({
   folderNames: z.record(folderKeySchema, z.string().trim().min(1).max(80)).optional(),
   /** folder → job id, or null to unlink */
   jobs: z.record(folderKeySchema, z.string().uuid().nullable()).optional(),
+  /** Folders this event does not need, e.g. Jobs and Leads for a hackathon. Searches inside are kept. */
+  hiddenFolders: z.array(folderKeySchema).max(FOLDER_KEYS.length).optional(),
 });
 
 export const previewBlueprintSchema = z.object({

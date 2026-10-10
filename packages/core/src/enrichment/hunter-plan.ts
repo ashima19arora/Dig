@@ -64,6 +64,53 @@ export interface HunterEmailHit {
   score?: number | null;
   verification?: { status?: string | null } | null;
   sources?: Array<{ uri?: string | null }> | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  position?: string | null;
+  linkedin?: string | null;
+}
+
+/** A named person Hunter saw on a public page at a company's domain, kept as a backup contact. */
+export interface HunterContact {
+  name: string;
+  position: string;
+  email: string;
+  linkedin: string | null;
+  sources: string[];
+  confidence: number;
+  verified: boolean;
+}
+
+/** The best saved person not already shown for this company (its main contact or an earlier extra). */
+export function nextBackupContact(saved: HunterContact[], shownEmails: string[]): HunterContact | null {
+  const shown = new Set(shownEmails.map((email) => email.trim().toLowerCase()).filter(Boolean));
+  return saved.find((person) => !shown.has(person.email.toLowerCase())) ?? null;
+}
+
+/**
+ * Every named, sourced person from one domain search, best first. The best one becomes the row's
+ * contact; the rest are kept so "Find another contact" can hand them out without a new search.
+ */
+export function rankedHunterContacts(rows: HunterEmailHit[]): HunterContact[] {
+  const people: Array<HunterContact & { score: number }> = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const email = sourcedEmail(row);
+    const name = [row.first_name, row.last_name].map((part) => part?.trim() ?? "").filter(Boolean).join(" ");
+    if (!email || !name || seen.has(email.value.toLowerCase())) continue;
+    seen.add(email.value.toLowerCase());
+    people.push({
+      name,
+      position: row.position?.trim() ?? "",
+      email: email.value,
+      linkedin: hunterLinkedin(row.linkedin),
+      sources: email.sources,
+      confidence: email.confidence,
+      verified: email.status === "valid",
+      score: rank(email),
+    });
+  }
+  return people.sort((a, b) => b.score - a.score).map(({ score: _score, ...person }) => person);
 }
 
 export interface SourcedHunterEmail {
