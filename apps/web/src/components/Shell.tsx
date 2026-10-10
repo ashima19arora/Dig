@@ -113,7 +113,7 @@ export function AppWindow(props: {
         </div>
         <div className="window-body">
           {props.sidebar !== false && <Sidebar active={props.sidebar ?? null} />}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{props.children}</div>
+          <div className="window-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>{props.children}</div>
         </div>
         {props.status !== undefined && <div className="statusbar">{props.status}</div>}
         <AskDiglett />

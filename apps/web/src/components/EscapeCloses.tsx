@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 /** Every pop-up's backdrop. Clicking the backdrop already closes the pop-up, so Esc does the same. */
-const BACKDROPS = ".scrim, .flow-modal-backdrop, .pitch-modal-overlay, .macos-modal-backdrop, .toolkit-intro-backdrop";
+const BACKDROPS = ".scrim, .flow-modal-backdrop, .pitch-modal-overlay, .macos-modal-backdrop, .toolkit-intro-backdrop, .versions-backdrop";
 
 /**
  * Esc closes the topmost open pop-up, the same way clicking outside it does.

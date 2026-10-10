@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { MarketingFooter, MarketingNav, PixelHeading, Reveal } from "../components/Marketing";
+import { shouldShowVersions, VersionsModal } from "../components/VersionsModal";
 
 /*
   Break-card sprites: hand-drawn frames laid out in one horizontal strip, played with hard cuts (no
@@ -89,6 +90,14 @@ const LOG: Item[] = [
 ];
 
 export function DevLog() {
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  // Opens half a second after load, so the page is never blocked while it loads.
+  useEffect(() => {
+    if (!shouldShowVersions()) return;
+    const timer = window.setTimeout(() => setVersionsOpen(true), 500);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <div className="landing mk-page">
       <MarketingNav />
@@ -97,7 +106,11 @@ export function DevLog() {
           DEV_LOG
         </PixelHeading>
         <h1 className="log-title">How Dig got dug — four days, two builders, every commit in between.</h1>
+        <button type="button" className="px-btn versions-reopen" onClick={() => setVersionsOpen(true)}>
+          v1 → v2
+        </button>
       </header>
+      {versionsOpen && <VersionsModal onClose={() => setVersionsOpen(false)} />}
 
       <main className="log">
         <Reveal className="log-frame">

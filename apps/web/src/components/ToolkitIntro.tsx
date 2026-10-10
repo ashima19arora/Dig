@@ -1,6 +1,5 @@
 import { CalendarCheck, Layers, ScanSearch, Workflow, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 
 /** Remembers that the intro was seen, so it only opens on its own the first time. */
@@ -66,13 +65,10 @@ export function ToolkitIntro({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Drawn over the whole page, not inside the app window, so it is always centred.
-  return createPortal(
+  // Sits over the workspace (right of the sidebar) and is centred there.
+  return (
     <div className="toolkit-intro-backdrop" onClick={close}>
       <div ref={dialog} className="toolkit-intro" role="dialog" aria-modal="true" aria-labelledby="toolkit-intro-title" onClick={(click) => click.stopPropagation()}>
-        <div className="toolkit-intro-art" aria-hidden>
-          {!imageFailed && <img src="/toolkit-intro.png" alt="" onError={() => setImageFailed(true)} />}
-        </div>
         <div className="toolkit-intro-text">
           <button type="button" className="modal-x toolkit-intro-x" onClick={close} aria-label="Close">
             <X size={15} />
@@ -108,8 +104,10 @@ export function ToolkitIntro({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
+        <div className="toolkit-intro-art" aria-hidden>
+          {!imageFailed && <img src="/toolkit-intro.png" alt="" onError={() => setImageFailed(true)} />}
+        </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
