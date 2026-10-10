@@ -1,6 +1,6 @@
 import type { CollectedRecord, ContactChannelStatus } from "../types.js";
 import { applyChannelToFields, channel, emptyContactability, fieldForChannel, scoreContactability, type ChannelKey } from "./contactability.js";
-import { isPatternGuess, literalOnPage, matchIdentity, type IdentityEntity, type IdentityProfile } from "./identity.js";
+import { cleanPersonName, isPatternGuess, literalOnPage, matchIdentity, type IdentityEntity, type IdentityProfile } from "./identity.js";
 import { evaluateTrustMany, mockTrustProvider, type TrustInput, type TrustProvider } from "./trust.js";
 
 export type EnrichProviderName = "tavily" | "github" | "hunter" | "pdl" | "apollo";
@@ -54,16 +54,21 @@ const RANK: Record<ContactChannelStatus, number> = {
   NOT_FOUND: 1,
 };
 
-function entityOf(record: CollectedRecord): IdentityEntity {
+export function entityOf(record: CollectedRecord): IdentityEntity {
   const fields = record.fields;
+  const person = fields.person_name || fields.contact || "";
   return {
-    name: fields.person_name || fields.contact || fields.company_name || "",
+    name: person ? cleanPersonName(person) : fields.company_name || "",
     company: fields.company_name || fields.affiliation || "",
     location: fields.location || "",
     website: fields.website || "",
     email: fields.email || "",
+    kind: person ? "person" : "company",
   };
 }
+
+/** Bump when lookups change, so results cached under the old rules (including empty ones) are not reused. */
+const LOOKUP_VERSION = "v2";
 
 function groundedChannels(record: CollectedRecord, now: string) {
   const book = emptyContactability(now);
@@ -147,7 +152,7 @@ async function runProvider(
   cache: EnrichCache | undefined,
 ): Promise<ProviderCandidate[]> {
   if (!fn) return [];
-  const key = [name, entity.name, entity.company, entity.website, entity.email ?? ""].join(":").toLowerCase();
+  const key = [name, entity.name, entity.company, entity.website, entity.email ?? "", LOOKUP_VERSION].join(":").toLowerCase();
   const cached = cache?.get(key);
   if (cached) return cached;
   try {

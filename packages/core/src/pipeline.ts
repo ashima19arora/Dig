@@ -4,7 +4,7 @@ import { dedupeRecords } from "./dedupe.js";
 import { diffDatasets } from "./diff.js";
 import { intentDefinition } from "./intents.js";
 import { acceptedFieldNames } from "./enrichment/index.js";
-import { applyThreshold, mockJevProvider, type JevProvider } from "./jev.js";
+import { applyThreshold, containmentDecision, mockJevProvider, type JevProvider } from "./jev.js";
 import { comparisonKey, normalizeFields } from "./normalize.js";
 import { qualityScore, scoreRecord } from "./rank.js";
 import type {
@@ -160,7 +160,10 @@ export async function runPipeline(
     };
   });
 
-  drafts.sort((a, b) => b.activityScore - a.activityScore || b.confidence - a.confidence || label(a).localeCompare(label(b)));
+  const filled = (draft: Draft) => filledCount(draft.fields, input.blueprint.fields);
+  const byCompleteness = (a: Draft, b: Draft) =>
+    filled(b) - filled(a) || b.activityScore - a.activityScore || b.confidence - a.confidence || label(a).localeCompare(label(b));
+  drafts.sort(byCompleteness);
   if (onStage) {
     await onStage("VALIDATING", {
       sources: dedupedSources,
@@ -223,7 +226,7 @@ export async function runPipeline(
         if (!fieldDiff.from || !fieldDiff.to) continue;
         const oldEvidence = prior.evidence.find((item) => item.fieldName === fieldDiff.field && item.value === fieldDiff.from) ?? prior.evidence.find((item) => item.fieldName === fieldDiff.field) ?? null;
         const newEvidence = current.evidence.find((item) => item.fieldName === fieldDiff.field && item.value === fieldDiff.to) ?? current.evidence.find((item) => item.fieldName === fieldDiff.field) ?? null;
-        const decision = await jev.decide({
+        const decision = containmentDecision(fieldDiff.from, fieldDiff.to) ?? await jev.decide({
           field: fieldDiff.field,
           oldValue: fieldDiff.from,
           newValue: fieldDiff.to,
@@ -281,9 +284,11 @@ export async function runPipeline(
     });
   }
 
+  // Conflict review can put an old value back, so rank on the fields as they will be published.
+  drafts.sort(byCompleteness);
   const records: PublishedRecord[] = drafts.map((draft, index) => {
     const pending = conflicts.filter((conflict) => conflict.canonicalEntityId === draft.canonicalEntityId && conflict.status === "PENDING");
-    const annotation = remarkFor(draft, pending, index + 1);
+    const annotation = remarkFor(draft, pending, index + 1, filled(draft));
     return {
       id: draft.id,
       canonicalEntityId: draft.canonicalEntityId,
@@ -407,6 +412,18 @@ function covers(fields: Record<string, string>, sources: ProvenanceSource[], req
   });
 }
 
+const UNRANKED_FIELDS = new Set(["source_url", "last_verified"]);
+const CONTACT_FIELDS = ["email", "phone", "linkedin", "github", "website"];
+
+/** How many details a row has: its search type's fields plus contact paths. Rows with more rank first. */
+export function filledCount(fields: Record<string, string>, blueprintFields: string[]): number {
+  let count = 0;
+  for (const key of new Set([...blueprintFields, ...CONTACT_FIELDS])) {
+    if (!UNRANKED_FIELDS.has(key) && fields[key]?.trim()) count += 1;
+  }
+  return count;
+}
+
 function label(record: { fields: Record<string, string> }): string {
   const f = record.fields;
   if (f.person_name) return f.person_name;
@@ -414,14 +431,14 @@ function label(record: { fields: Record<string, string> }): string {
   return f.company_name || f.event_name || f.program_name || f.product_name || f.segment || "Record";
 }
 
-function remarkFor(record: Draft, pending: ConflictDraft[], rank: number): PublishedRecord["annotation"] {
+function remarkFor(record: Draft, pending: ConflictDraft[], rank: number, filled: number): PublishedRecord["annotation"] {
   const name = label(record);
   const sources = record.sources.length;
   if (pending.length) {
     const conflict = pending[0];
     return {
       remark: `${name}: ${fieldLabel(conflict?.field ?? "field")} stays "${conflict?.oldValue}" until review. A later source proposes "${conflict?.newValue}".`,
-      reasoning: `Activity rank #${rank}. ${sources} source${sources === 1 ? "" : "s"}. The newer value was not applied because decision confidence is below the auto-resolve threshold.`,
+      reasoning: `Rank #${rank}, ${filled} details filled. ${sources} source${sources === 1 ? "" : "s"}. The newer value was not applied because decision confidence is below the auto-resolve threshold.`,
       confidence: record.confidence,
     };
   }
@@ -432,7 +449,7 @@ function remarkFor(record: Draft, pending: ConflictDraft[], rank: number): Publi
       : record.fields.capability || record.fields.category || record.fields.segment || "listed in this collection";
   return {
     remark: `${name} is recorded as ${detail}. Activity score ${record.activityScore.toFixed(2)} from ${sources} source${sources === 1 ? "" : "s"}.`,
-    reasoning: `Ranked #${rank} from recency ${record.activityComponents.recency}, source coverage ${record.activityComponents.sourceCount}, authority ${record.activityComponents.officialSource}, and freshness ${record.activityComponents.freshness}.`,
+    reasoning: `Ranked #${rank}: ${filled} details filled. Ties are broken by activity, from recency ${record.activityComponents.recency}, source coverage ${record.activityComponents.sourceCount}, authority ${record.activityComponents.officialSource}, and freshness ${record.activityComponents.freshness}.`,
     confidence: record.confidence,
   };
 }

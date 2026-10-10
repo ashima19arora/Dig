@@ -75,6 +75,37 @@ export const mockJevProvider: JevProvider = {
   },
 };
 
+function words(value: string): string {
+  return ` ${value.toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim()} `;
+}
+
+/**
+ * "IBM" and "Engineering & AI Leader, IBM" are the same fact, one more complete.
+ * Keep the fuller value without asking anyone. Whole words only: "sponsor" is not inside "sponsored by".
+ */
+export function containmentDecision(oldValue: string, newValue: string): JevDecision | null {
+  const before = words(oldValue);
+  const after = words(newValue);
+  if (!before.trim() || !after.trim() || before === after) return null;
+  if (before.includes(after)) {
+    return {
+      decision: "OLD",
+      confidence: 0.95,
+      reason: `"${newValue}" is already part of "${oldValue}", so the more complete value was kept.`,
+      provider: "rule",
+    };
+  }
+  if (after.includes(before)) {
+    return {
+      decision: "NEW",
+      confidence: 0.95,
+      reason: `"${newValue}" adds detail to "${oldValue}", so the more complete value was kept.`,
+      provider: "rule",
+    };
+  }
+  return null;
+}
+
 export function applyThreshold(decision: JevDecision, threshold: number): {
   status: "PENDING" | "AUTO_RESOLVED";
   decision: JevDecision;

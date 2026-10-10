@@ -1,23 +1,30 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
+  acceptDescription,
+  applyDescription,
+  describePrompt,
   domainOf,
   enrichRecords,
+  entityOf,
+  entityOrganization,
   mockTrustProvider,
+  noteSnippet,
+  profileLinkCandidates,
+  relevantNotes,
   type CollectedRecord,
   type EnrichCache,
   type IdentityEntity,
+  type PageNote,
   type ProviderCandidate,
 } from "@dig/core";
-import { findContact, tavilySearch } from "./collect-live.js";
+import { chatJson, findContact, llmLanes, tavilySearch, type TavilyResult } from "./collect-live.js";
 import { beginHunterRun, lookupHunter } from "./hunter.js";
 import { jevTrustProvider } from "./jev-client.js";
 import type { Progress } from "./db.js";
 import { env } from "./env.js";
 
 const DAY = 86_400_000;
-const LINKEDIN_URL = /https?:\/\/(?:[\w.]+\.)?linkedin\.com\/in\/[A-Za-z0-9\-_%]+/gi;
-const GITHUB_URL = /https?:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?(?![A-Za-z0-9/-])/gi;
 
 interface CacheEntry {
   at: number;
@@ -86,8 +93,9 @@ function candidate(partial: Omit<ProviderCandidate, "profile"> & { profile?: Pro
 async function tavilyCandidates(entity: IdentityEntity, signal: AbortSignal): Promise<ProviderCandidate[]> {
   if (!env.tavilyKey) return [];
   const found: ProviderCandidate[] = [];
-  if (entity.company || entity.website) {
-    const contacts = await findContact(entity.company || entity.name, signal);
+  const org = entityOrganization(entity);
+  if (org || entity.website) {
+    const contacts = await findContact(org || entity.name, signal);
     if (signal.aborted) return found;
     for (const page of contacts) {
       const pageText = `${page.title}\n${page.text}`;
@@ -142,49 +150,120 @@ async function tavilyCandidates(entity: IdentityEntity, signal: AbortSignal): Pr
     }
   }
 
-  const query = [entity.name, entity.company, "LinkedIn OR GitHub"].filter(Boolean).join(" ");
+  const company = entity.kind === "company";
+  const terms = company ? [entity.name, "LinkedIn"] : [entity.name, org, "LinkedIn OR GitHub"];
+  const query = [...new Set(terms.filter(Boolean))].join(" ");
   const results = await tavilySearch({ query, depth: "basic", maxResults: 5, rawContent: false }, signal);
   if (signal.aborted) return found;
-  for (const result of results) {
-    const pageText = `${result.title}\n${result.content}`;
-    const mentions = (entity.name && pageText.toLowerCase().includes(entity.name.toLowerCase()))
-      || (entity.company && pageText.toLowerCase().includes(entity.company.toLowerCase()));
-    if (!mentions) continue;
-    const companyOnPage = Boolean(entity.company && pageText.toLowerCase().includes(entity.company.toLowerCase()));
-    const seenProfile = { name: entity.name, company: companyOnPage ? entity.company : "", location: "", website: "" };
-    for (const value of unique(pageText.match(LINKEDIN_URL) ?? [])) {
-      found.push(candidate({
-        provider: "tavily",
-        channel: "linkedin",
-        value,
-        sourceUrl: result.url,
-        pageText,
-        confidence: companyOnPage ? 0.86 : 0.55,
-        verificationStatus: null,
-        sources: [result.url],
-        profile: seenProfile,
-      }, entity));
+  rememberNotes(entity, results);
+  found.push(...profileLinkCandidates(entity, results));
+  return found;
+}
+
+// ---------------------------------------------------------------------------
+// Pages about each row, kept so an empty "What they do" or "Expertise" can be filled
+// with words copied from them. Cached beside the provider results, for the same 7 days.
+// ---------------------------------------------------------------------------
+
+function noteKey(entity: IdentityEntity) {
+  return `notes:${entity.name}:${entity.company}`.toLowerCase();
+}
+
+function rememberNotes(entity: IdentityEntity, results: TavilyResult[]): PageNote[] {
+  const notes = relevantNotes(
+    entity,
+    results.map((result) => ({ url: result.url, title: result.title, text: result.content })),
+  ).slice(0, 3);
+  const cache = readCache();
+  cache.set(noteKey(entity), { at: Date.now(), ttl: 7 * DAY, value: notes });
+  writeCache(cache);
+  return notes;
+}
+
+function storedNotes(entity: IdentityEntity): PageNote[] | null {
+  const entry = readCache().get(noteKey(entity));
+  if (!entry || Date.now() - entry.at > entry.ttl) return null;
+  return entry.value as PageNote[];
+}
+
+async function inPool<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const item = items[next++] as T;
+        await task(item);
+      }
+    }),
+  );
+}
+
+const DESCRIBE_BATCH = 20;
+
+/**
+ * Fill an empty description column from pages enrichment already found about each row.
+ * The phrase must be copied from the page, and the page is cited as the field's source.
+ * Anything that fails leaves the row as it was.
+ */
+async function describeMissing(records: CollectedRecord[], field: string, budgetMs: number): Promise<CollectedRecord[]> {
+  const deadline = Date.now() + budgetMs;
+  const missing = records.filter((record) => !record.fields[field]?.trim());
+  if (missing.length === 0) return records;
+
+  const items: Array<{ id: string; entity: IdentityEntity; notes: PageNote[] }> = [];
+  await inPool(missing, env.enrichmentConcurrency.tavily, async (record) => {
+    const entity = entityOf(record);
+    if (!entity.name) return;
+    let notes = storedNotes(entity);
+    if (!notes && env.tavilyKey && Date.now() < deadline) {
+      const org = entityOrganization(entity);
+      const query = [...new Set([entity.name, org].filter(Boolean))].join(" ");
+      const results = await tavilySearch({ query, depth: "basic", maxResults: 3, rawContent: false }, AbortSignal.timeout(8_000)).catch(() => []);
+      notes = rememberNotes(entity, results);
     }
-    for (const value of unique(pageText.match(GITHUB_URL) ?? [])) {
-      found.push(candidate({
-        provider: "tavily",
-        channel: "github",
-        value: value.replace(/\/$/, ""),
-        sourceUrl: result.url,
-        pageText,
-        confidence: companyOnPage ? 0.86 : 0.55,
-        verificationStatus: null,
-        sources: [result.url],
-        profile: seenProfile,
-      }, entity));
+    const snippets = relevantNotes(entity, notes ?? []).slice(0, 2).map((note) => noteSnippet(entity, note));
+    if (snippets.length) items.push({ id: record.canonicalEntityId, entity, notes: snippets });
+  });
+  if (items.length === 0) return records;
+
+  const lanes = llmLanes();
+  const chosen = new Map<string, { value: string; note: PageNote }>();
+  for (let start = 0, batch = 0; start < items.length && Date.now() < deadline; start += DESCRIBE_BATCH, batch += 1) {
+    const slice = items.slice(start, start + DESCRIBE_BATCH);
+    const user = slice
+      .map((item, index) => {
+        const pages = item.notes.map((note) => `${note.title} — ${note.text}`).join("\n");
+        return `[${index + 1}] ${item.entity.name}${item.entity.company && item.entity.company !== item.entity.name ? ` (${item.entity.company})` : ""}\n${pages}`;
+      })
+      .join("\n\n");
+    const lane = lanes[batch % lanes.length]!;
+    const parsed = await chatJson<{ items?: Array<{ id?: string | number; value?: unknown }> }>(lane, {
+      system: describePrompt(field),
+      user,
+      maxTokens: 1500,
+      deadline,
+      label: `describe ${field} batch ${batch + 1}`,
+      // Extraction has usually just spent the rate budget: wait it out inside this step's own deadline.
+      handBack: false,
+    });
+    for (const answer of parsed?.items ?? []) {
+      const item = slice[Number(answer.id) - 1];
+      if (!item) continue;
+      const accepted = acceptDescription(answer.value, item.entity, item.notes);
+      if (accepted) chosen.set(item.id, accepted);
     }
   }
-  return found;
+  console.log(`[enrich] ${field}: filled ${chosen.size} of ${missing.length} empty rows (${items.length} had pages about them)`);
+  return records.map((record) => {
+    const accepted = chosen.get(record.canonicalEntityId);
+    return accepted ? applyDescription(record, field, accepted.value, accepted.note) : record;
+  });
 }
 
 async function githubCandidates(entity: IdentityEntity, signal: AbortSignal): Promise<ProviderCandidate[]> {
   if (!env.githubEnabled || !entity.name) return [];
-  const query = [entity.name, entity.company].filter(Boolean).join(" ");
+  // Name only: "in:name" needs every word in the profile name. The company is checked afterwards by identity matching.
+  const query = entity.name;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "dig-research",
@@ -316,7 +395,7 @@ function bounded(timeoutMs: number, parent: AbortSignal) {
 
 export async function enrichCollected(
   records: CollectedRecord[],
-  options: { demo: boolean; now: string; onStage?: (stage: string, progress: Progress) => void },
+  options: { demo: boolean; now: string; describeField?: string | null; onStage?: (stage: string, progress: Progress) => void },
 ): Promise<CollectedRecord[]> {
   if (!options.demo && env.hunterEnabled) beginHunterRun();
   const progress = (stage: "ENRICHING" | "IDENTITY_RESOLUTION" | "TRUST_EVALUATION") => {
@@ -332,7 +411,7 @@ export async function enrichCollected(
       conflicts: 0,
     });
   };
-  return enrichRecords(records, {
+  const enriched = await enrichRecords(records, {
     demo: options.demo,
     now: options.now,
     timeoutMs: env.enrichmentTimeoutMs,
@@ -350,8 +429,11 @@ export async function enrichCollected(
           ...(env.apolloEnabled ? { apollo: (entity: IdentityEntity, signal: AbortSignal) => apolloCandidates(entity, bounded(6_000, signal)) } : {}),
         },
   });
-}
-
-function unique(values: string[]) {
-  return [...new Set(values)];
+  if (options.demo || !options.describeField) return enriched;
+  try {
+    return await describeMissing(enriched, options.describeField, 25_000);
+  } catch (error) {
+    console.log("[enrich] describe step skipped:", error instanceof Error ? error.message : error);
+    return enriched;
+  }
 }

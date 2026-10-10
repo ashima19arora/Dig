@@ -1,4 +1,4 @@
-import { collectDemo, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
+import { collectDemo, describeFieldFor, runPipeline, stagePercent, type CollectedRecord } from "@dig/core";
 import type { Response } from "express";
 import { collectLive } from "./collect-live.js";
 import { enrichCollected } from "./enrich.js";
@@ -96,6 +96,7 @@ export async function executeJob(db: DigDb, jobId: string, actorId: string, opti
       collected = await enrichCollected(collected, {
         demo: job.demo,
         now: now.toISOString(),
+        describeField: describeFieldFor(job.blueprint.intent),
         onStage: (stage, progress) => {
           if (cancelled.has(jobId)) {
             throw Object.assign(new Error("Collection cancelled."), { code: "CANCELLED" });

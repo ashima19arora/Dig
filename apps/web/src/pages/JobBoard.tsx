@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ACTIVE_STATES,
   api,
@@ -48,12 +48,12 @@ type Pair = [string, string];
 const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = {
   SPONSOR_LOOKUP: {
     noun: "sponsors",
-    columns: [["company_name", "Company"], ["event_name", "Event"], ["sponsorship_type", "Type"], ["contact", "Contact"], ["email", "Email"]],
+    columns: [["company_name", "Company"], ["event_name", "Event"], ["sponsorship_type", "Type"], ["contact", "Contact"], ["email", "Email"], ["linkedin", "LinkedIn"]],
     cards: [["company_name", "Company name"], ["event_name", "Event"], ["sponsorship_type", "Sponsorship type"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["last_verified", "Last verified"]],
   },
   JUDGE_LOOKUP: {
     noun: "people",
-    columns: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Event"], ["email", "Email"]],
+    columns: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Event"], ["email", "Email"], ["linkedin", "LinkedIn"], ["github", "GitHub"]],
     cards: [["person_name", "Name"], ["affiliation", "Affiliation"], ["expertise", "Expertise"], ["event_name", "Event (judged, mentored or spoke at)"], ["email", "Email"], ["profile_url", "Profile"], ["last_verified", "Last verified"]],
   },
   JOB_LOOKUP: {
@@ -63,7 +63,7 @@ const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = 
   },
   LEAD_LOOKUP: {
     noun: "leads",
-    columns: [["company_name", "Company"], ["category", "What they do"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"]],
+    columns: [["company_name", "Company"], ["category", "What they do"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"], ["linkedin", "LinkedIn"]],
     cards: [["company_name", "Company"], ["category", "What they do"], ["contact", "Contact"], ["email", "Email"], ["phone", "Phone"], ["website", "Website"], ["last_verified", "Last verified"]],
   },
   COMPETITOR_LOOKUP: {
@@ -101,6 +101,68 @@ function getEmail(record: DatasetRecord): string | null {
   const val = record.fields.email || record.contactability?.channels?.email?.value;
   if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) return val.trim();
   return null;
+}
+
+/** LinkedIn people search for a row: the person and their organization, or the company. */
+function linkedinSearchUrl(record: DatasetRecord): string {
+  const person = record.fields.person_name || record.fields.contact || "";
+  const org = (record.fields.company_name || record.fields.affiliation || "").split(/[|,]/)[0]?.trim() ?? "";
+  const keywords = person ? `${person} ${org}` : org || record.label || "";
+  return `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(keywords.trim())}`;
+}
+
+/** "https://www.linkedin.com/in/alex-k" → "in/alex-k", "https://github.com/alexk" → "@alexk". */
+function shortProfile(url: string): string {
+  const path = url.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\/+$/, "");
+  return /github\.com/i.test(url) ? `@${path}` : path;
+}
+
+function ProfileCell({ record, channel }: { record: DatasetRecord; channel: "linkedin" | "github" }) {
+  const accepted = record.fields[channel];
+  const item = record.contactability?.channels?.[channel];
+  const possible = !accepted && item?.status === "NEEDS_REVIEW" && item.value ? item.value : null;
+  const url = accepted || possible;
+  if (url && /^https?:\/\//i.test(url)) {
+    return (
+      <td>
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="email-link"
+          onClick={(e) => e.stopPropagation()}
+          title={possible ? `Possible match, check before using: ${url}` : url}
+          style={possible ? { opacity: 0.7 } : undefined}
+        >
+          <span>{shortProfile(url)}</span>
+          <ExternalLink size={10} style={{ flexShrink: 0 }} />
+        </a>
+        {possible && <span style={{ color: "var(--text-3)", fontSize: 11, marginLeft: 4 }}>check</span>}
+      </td>
+    );
+  }
+  if (channel === "github") {
+    return (
+      <td>
+        <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>
+      </td>
+    );
+  }
+  return (
+    <td>
+      <a
+        href={linkedinSearchUrl(record)}
+        target="_blank"
+        rel="noreferrer"
+        className="linkedin-finder-link"
+        onClick={(e) => e.stopPropagation()}
+        title="No profile found. Search LinkedIn for this name"
+      >
+        <span>Search LinkedIn</span>
+        <ExternalLink size={10} />
+      </a>
+    </td>
+  );
 }
 
 function getWebsite(record: DatasetRecord): string | null {
@@ -238,7 +300,6 @@ function isActive(status: string | undefined) {
 
 export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [live, setLive] = useState<JobProgress | null>(null);
   const [tab, setTab] = useState<Tab>("all");
@@ -609,13 +670,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
           </div>
           <div style={{ display: "flex", gap: 8, position: "relative", alignItems: "center" }}>
             <button
-              className="btn blue"
-              title="Launch an autonomous Agent Mission with this dataset"
-              onClick={() => navigate(`/agents/mission?job=${jobId}`)}
-            >
-              <Sparkles size={13} /> Launch Mission
-            </button>
-            <button
               className="btn"
               disabled={!version}
               onClick={(click) => {
@@ -903,9 +957,11 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                                 </Fragment>
                               );
                             }
+                            if (key === "linkedin" || key === "github") {
+                              return <ProfileCell key={key} record={record} channel={key} />;
+                            }
                             if (key === "email") {
                               const email = getEmail(record);
-                              const companyName = record.fields.company_name || record.label || "";
                               const isCopied = copiedId === `email-${record.id}`;
                               if (email) {
                                 return (
@@ -931,25 +987,11 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                                   </td>
                                 );
                               }
-                              const linkedinQuery = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
                               return (
                                 <td key={key}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <span style={{ color: "var(--text-3)", fontSize: 12 }} title="No verified email on source page">
-                                      —
-                                    </span>
-                                    <a
-                                      href={linkedinQuery}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="linkedin-finder-link"
-                                      onClick={(e) => e.stopPropagation()}
-                                      title={`No direct email listed. Search ${companyName} contacts on LinkedIn`}
-                                    >
-                                      <span>Search LinkedIn</span>
-                                      <ExternalLink size={10} />
-                                    </a>
-                                  </div>
+                                  <span style={{ color: "var(--text-3)", fontSize: 12 }} title="No verified email on source page">
+                                    —
+                                  </span>
                                 </td>
                               );
                             }
@@ -974,7 +1016,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                     })}
                     {rows.length === 0 && (
                       <tr>
-                        <td colSpan={view.columns.length + 5}style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
+                        <td colSpan={view.columns.length + 5} style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
                           Nothing matches this view.
                         </td>
                       </tr>
@@ -1017,13 +1059,6 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
             </button>
             <button className="btn" onClick={exportSelectedCsv}>
               <Download size={13} /> Export Selected (.csv)
-            </button>
-            <button
-              className="btn blue"
-              onClick={() => navigate(`/agents/mission?job=${jobId}`)}
-              title="Launch mission for dataset"
-            >
-              <Sparkles size={13} /> Launch Mission
             </button>
             <button
               className="btn"
@@ -1335,8 +1370,8 @@ function RecordPanel(props: {
             <ShieldCheck size={12} color="#10b981" />
             <span>Proof &amp; Evidence Dossier</span>
             <span className="eyebrow-sep">·</span>
-            <span className={`veracity-pill ${veracity >= 0.8 && statusWord === "Verified" ? "high" : "med"}`}>
-              {statusWord} · {Math.round(veracity * 100)}% Veracity
+            <span style={{ color: "var(--text)", textTransform: "none", letterSpacing: 0 }}>
+              <b>{statusWord}</b> {Math.round(veracity * 100)}%
             </span>
           </div>
           <button
@@ -1389,7 +1424,7 @@ function RecordPanel(props: {
             </div>
             {conflict.reason && (
               <p className="why">
-                <b>Jev:</b> {conflict.reason}
+                <b>Decision:</b> {conflict.reason}
               </p>
             )}
             <div className="actions">
@@ -1653,8 +1688,6 @@ function ContactPaths({
           const effectiveValue = item.value || directLinkedin;
           const found = Boolean(effectiveValue) && (item.status !== "NOT_FOUND" || Boolean(directLinkedin));
           const href = found && effectiveValue && /^https?:\/\//i.test(effectiveValue) ? effectiveValue : null;
-          const companyName = record.fields.company_name || record.label || "";
-          const linkedinSearchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(companyName + " sponsor partnerships")}`;
           const isCopyable = (key === "email" || key === "phone") && found && Boolean(effectiveValue);
           const copyKey = `cp-${key}-${record.id}`;
 
@@ -1685,11 +1718,11 @@ function ContactPaths({
                       <span style={{ color: "var(--text-3)" }}>Not found</span>
                       <span className="path-sep">·</span>
                       <a
-                        href={linkedinSearchUrl}
+                        href={linkedinSearchUrl(record)}
                         target="_blank"
                         rel="noreferrer"
                         className="linkedin-finder-link"
-                        title={`Search LinkedIn for ${companyName} partnership contacts`}
+                        title="No profile found. Search LinkedIn for this name"
                       >
                         <span>Search LinkedIn</span>
                         <ExternalLink size={9} />

@@ -8,6 +8,43 @@ export interface IdentityEntity {
   website: string;
   /** Set when research already grounded an email. Hunter must not spend a credit on it. */
   email?: string;
+  /** A named person, or a company with no person on the row. Unset is treated as a person. */
+  kind?: "person" | "company";
+}
+
+const HONORIFIC = /^(?:(?:shri|sri|smt|kumari|dr|prof|professor|mr|mrs|ms|miss|er|hon'?ble|sir)\.?\s+)+/i;
+
+/** "Shri Abhishek Singh" and "Dr. A. Rao" are looked up as "Abhishek Singh" and "A. Rao". */
+export function cleanPersonName(name: string): string {
+  const cleaned = name.replace(HONORIFIC, "").replace(/\s+/g, " ").trim();
+  return cleaned || name.trim();
+}
+
+const TITLE =
+  "(?:co-?founder|founder|ceo|cto|coo|cfo|cmo|cpo|cio|chief|officer|vp|svp|evp|president|director|head|lead|leader|manager|senior|sr|principal|staff|engineer|engineering|scientist|researcher|professor|prof|assistant|associate|adjunct|lecturer|dean|chair|chairman|chairperson|secretary|additional|joint|deputy|partner|managing|general|member|board|advisor|adviser|mentor|consultant|fellow|executive|evangelist|developer|architect|analyst|designer|product|owner|investor|angel|author|speaker|judge)";
+const LEADING_TITLES = new RegExp(`^(?:(?:${TITLE}|&|and|of|the|/)(?:\\s+|$))+`, "i");
+const TRAILING_TITLES = new RegExp(`(?:(?:^|\\s+)(?:${TITLE}|&|and|of|/))+$`, "i");
+
+function stripTitles(segment: string): string {
+  return segment.trim().replace(LEADING_TITLES, "").replace(TRAILING_TITLES, "").trim();
+}
+
+/**
+ * The organization inside a person's affiliation line, for search queries and page checks.
+ * "Founder & CEO - Cre8TechIn | AS Music Bros." gives "Cre8TechIn". Only for people: a company
+ * name like "Product Hunt" must never go through this.
+ */
+export function organizationHint(affiliation: string): string {
+  const text = affiliation.replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const after = /(?:\bat\b|@)\s*([^,|;]+)/i.exec(text)?.[1];
+  const preferred = after ? stripTitles(after) : "";
+  if (preferred.length >= 2) return preferred.slice(0, 60);
+  for (const segment of text.split(/\s*(?:\||,|;|\s[-–—]\s)\s*/)) {
+    const org = stripTitles(segment);
+    if (org.length >= 2) return org.slice(0, 60);
+  }
+  return "";
 }
 
 export interface IdentityProfile {
