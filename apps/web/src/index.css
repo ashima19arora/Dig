@@ -2023,6 +2023,14 @@ button.mk-link { background: none; border: 0; padding: 0; }
 
 /* Folder tiles — quiet grey highlight, instant (no transition). */
 .folders { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.folder-hidden { opacity: 0.45; }
+/* Extra people at a company sit right under it, slightly set back. */
+.data-grid tr.extra-contact td { background: var(--sunken); font-size: 12.5px; }
+.data-grid tr.extra-contact td.n { color: var(--text-3); }
+.hidden-folders-toggle {
+  margin-top: 14px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline;
+}
+.hidden-folders-toggle:hover { color: var(--text); }
 .folder {
   position: relative; width: 132px; padding: 10px 6px 8px; border-radius: 10px;
   background: none; border: 0; text-align: center; color: var(--text); text-decoration: none;
@@ -5377,6 +5385,11 @@ html[data-theme="dark"] .dossier-control-bar {
   color: #4c6fff;
 }
 
+.merger-dedupe-toggle { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 13px; color: var(--text); }
+.merger-dedupe-toggle input { width: 15px; height: 15px; margin-top: 2px; flex-shrink: 0; }
+.merger-dedupe-toggle span { display: flex; flex-direction: column; gap: 2px; }
+.merger-dedupe-toggle b { font-weight: 600; }
+.merger-dedupe-toggle small { font-size: 12px; color: var(--text-3); }
 .merger-config-bar {
   display: flex;
   align-items: center;

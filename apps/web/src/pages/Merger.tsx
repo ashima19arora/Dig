@@ -15,11 +15,15 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { OutreachStatus } from "@dig/schemas";
 import { api, download, type Dataset, type DatasetRecord, type JobSummary } from "../api";
 import { AppWindow } from "../components/Shell";
 import { ROOT_CRUMB } from "../events";
 import { notify, notifyError } from "../toast";
 import { CompanyLogo } from "./JobBoard";
+
+/** Furthest along wins when a merged row has marks in several searches. */
+const OUTREACH_ORDER: OutreachStatus[] = ["pending", "declined", "waiting", "interested"];
 
 interface MergedRecord {
   id: string;
@@ -50,7 +54,7 @@ export function Merger() {
   const [dedupe, setDedupe] = useState<boolean>(true);
   const [search, setSearch] = useState<string>("");
   const [isDatasetsOpen, setIsDatasetsOpen] = useState<boolean>(true);
-  const [previewTab, setPreviewTab] = useState<"all" | "reachable" | "highConfidence" | "crossMatches">("all");
+  const [previewTab, setPreviewTab] = useState<"all" | "contacted" | OutreachStatus>("all");
   const [selectedRow, setSelectedRow] = useState<MergedRecord | null>(null);
   const [copiedTsv, setCopiedTsv] = useState<boolean>(false);
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
@@ -88,6 +92,23 @@ export function Merger() {
       staleTime: 60_000,
     })),
   });
+
+  const outreachQueries = useQueries({
+    queries: Array.from(selectedJobIds).map((jobId) => ({
+      queryKey: ["outreach", jobId],
+      queryFn: () => api<{ outreach: Record<string, { status: OutreachStatus; note: string }> }>(`/api/jobs/${jobId}/outreach`),
+      staleTime: 30_000,
+    })),
+  });
+  const outreachByJob = useMemo(() => {
+    const ids = Array.from(selectedJobIds);
+    const map = new Map<string, Record<string, { status: OutreachStatus; note: string }>>();
+    outreachQueries.forEach((query, index) => {
+      const id = ids[index];
+      if (id && query.data) map.set(id, query.data.outreach);
+    });
+    return map;
+  }, [outreachQueries, selectedJobIds]);
 
   const isLoadingDatasets = datasetQueries.some((q) => q.isLoading);
 
@@ -225,25 +246,30 @@ export function Merger() {
   // Computed metrics
   const uniqueCount = allMergedRecords.length;
   const duplicatesResolved = Math.max(0, totalRawCount - uniqueCount);
-  const reachableCount = useMemo(() => {
-    return allMergedRecords.filter((r) => r.email.trim() || r.phone.trim()).length;
-  }, [allMergedRecords]);
-  const highConfCount = useMemo(() => {
-    return allMergedRecords.filter((r) => r.confidence >= 0.8).length;
-  }, [allMergedRecords]);
-  const crossMatchCount = useMemo(() => {
-    return allMergedRecords.filter((r) => r.origins.length > 1).length;
-  }, [allMergedRecords]);
+  /** One status per merged row: the furthest along across the searches it came from. */
+  const outreachOf = (record: MergedRecord): OutreachStatus => {
+    let best: OutreachStatus = "pending";
+    for (const origin of record.origins) {
+      const status = outreachByJob.get(origin.id)?.[record.canonicalEntityId]?.status ?? "pending";
+      if (OUTREACH_ORDER.indexOf(status) > OUTREACH_ORDER.indexOf(best)) best = status;
+    }
+    return best;
+  };
+  const outreachCounts = useMemo(() => {
+    const counts: Record<OutreachStatus, number> = { pending: 0, waiting: 0, interested: 0, declined: 0 };
+    for (const record of allMergedRecords) counts[outreachOf(record)] += 1;
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMergedRecords, outreachByJob]);
+  const contactedCount = allMergedRecords.length - outreachCounts.pending;
 
   // Filter merged records by search query and active tab
   const filteredRecords = useMemo(() => {
     let list = allMergedRecords;
-    if (previewTab === "reachable") {
-      list = list.filter((r) => r.email.trim() || r.phone.trim());
-    } else if (previewTab === "highConfidence") {
-      list = list.filter((r) => r.confidence >= 0.8);
-    } else if (previewTab === "crossMatches") {
-      list = list.filter((r) => r.origins.length > 1);
+    if (previewTab === "contacted") {
+      list = list.filter((r) => outreachOf(r) !== "pending");
+    } else if (previewTab !== "all") {
+      list = list.filter((r) => outreachOf(r) === previewTab);
     }
 
     const q = search.trim().toLowerCase();
@@ -556,7 +582,10 @@ export function Merger() {
                 checked={dedupe}
                 onChange={(e) => setDedupe(e.target.checked)}
               />
-              <span>Smart Deduplication (Unifies duplicate companies, merges emails &amp; phones across events)</span>
+              <span>
+                <b>Merge duplicates</b>
+                <small>The same company in several lists becomes one row, with its emails and phones combined.</small>
+              </span>
             </label>
             <div style={{ fontSize: 11, color: "var(--text-3)" }}>
               {isLoadingDatasets ? "Syncing datasets…" : "Ready to merge"}
@@ -583,8 +612,8 @@ export function Merger() {
             <span className="val">{duplicatesResolved}</span>
           </div>
           <div className="merger-metric-box">
-            <span className="lbl">Reachable Contacts</span>
-            <span className="val">{reachableCount}</span>
+            <span className="lbl">Contacted</span>
+            <span className="val">{contactedCount}</span>
           </div>
         </div>
 
@@ -600,27 +629,19 @@ export function Merger() {
                 >
                   All <span className="n">{allMergedRecords.length}</span>
                 </button>
-                <button
-                  type="button"
-                  className={previewTab === "reachable" ? "on" : undefined}
-                  onClick={() => setPreviewTab("reachable")}
-                >
-                  ✉️ Reachable <span className="n">{reachableCount}</span>
-                </button>
-                <button
-                  type="button"
-                  className={previewTab === "highConfidence" ? "on" : undefined}
-                  onClick={() => setPreviewTab("highConfidence")}
-                >
-                  ⚡ High Veracity <span className="n">{highConfCount}</span>
-                </button>
-                <button
-                  type="button"
-                  className={previewTab === "crossMatches" ? "on" : undefined}
-                  onClick={() => setPreviewTab("crossMatches")}
-                >
-                  🔗 Multi-Source <span className="n">{crossMatchCount}</span>
-                </button>
+                {(
+                  [
+                    ["contacted", "Contacted", contactedCount],
+                    ["interested", "Interested", outreachCounts.interested],
+                    ["waiting", "Waiting", outreachCounts.waiting],
+                    ["declined", "Declined", outreachCounts.declined],
+                    ["pending", "Not contacted", outreachCounts.pending],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button key={key} type="button" className={previewTab === key ? "on" : undefined} onClick={() => setPreviewTab(key)}>
+                    {label} <span className="n">{count}</span>
+                  </button>
+                ))}
               </div>
               {isLoadingDatasets && <RotateCw size={13} className="spin" color="#4c6fff" />}
             </div>

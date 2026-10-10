@@ -14,6 +14,7 @@ export function EventFolder() {
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [filter, setFilter] = useState("");
+  const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
     if (event) void touchEvent(event.id);
@@ -23,7 +24,9 @@ export function EventFolder() {
 
   if (loading) return <AppWindow crumbs={[{ label: ROOT_CRUMB, to: "/dashboard" }]} sidebar={null}><div className="empty">Loading…</div></AppWindow>;
   if (!event) return <Navigate to="/dashboard" replace />;
+  const hidden = new Set(event.hiddenFolders ?? []);
   const folders = FOLDERS.filter((folder) => {
+    if (hidden.has(folder.key) && !showHidden) return false;
     const q = filter.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -77,13 +80,18 @@ export function EventFolder() {
         <div className="label-muted">Job Types</div>
         <div className="folders">
           {folders.map((folder) => (
-            <JobFolder key={folder.key} event={event} folder={folder.key} />
+            <JobFolder key={folder.key} event={event} folder={folder.key} hidden={hidden.has(folder.key)} />
           ))}
           <button className="folder new" onClick={() => setAsking(true)}>
             <NewFolderIcon />
             <span className="name">Got Something Else?</span>
           </button>
         </div>
+        {hidden.size > 0 && (
+          <button className="hidden-folders-toggle" onClick={() => setShowHidden((current) => !current)}>
+            {showHidden ? "Hide the hidden folders again" : `Show ${hidden.size} hidden folder${hidden.size === 1 ? "" : "s"}`}
+          </button>
+        )}
       </div>
 
       {editing && (
@@ -102,19 +110,25 @@ export function EventFolder() {
   );
 }
 
-function JobFolder({ event, folder }: { event: DigEvent; folder: FolderKey }) {
+function JobFolder({ event, folder, hidden }: { event: DigEvent; folder: FolderKey; hidden: boolean }) {
   const navigate = useNavigate();
   const linked = event.jobs[folder];
+  const others = (event.hiddenFolders ?? []).filter((key) => key !== folder);
   return (
+    <div className={hidden ? "folder-hidden" : undefined}>
     <FolderTile
       to={`/events/${event.id}/${folder}`}
       name={folderLabel(event, folder)}
       onRename={(name) => void renameFolder(event.id, folder, name)}
       menu={[
         { label: "Open", onClick: () => navigate(`/events/${event.id}/${folder}`) },
-        ...(linked ? [{ label: "Unlink current search", onClick: () => void unlinkJob(event.id, folder) }] : []),
+        ...(linked ? [{ label: "Remove search from folder", onClick: () => void unlinkJob(event.id, folder) }] : []),
+        hidden
+          ? { label: "Show folder", onClick: () => void updateEvent(event.id, { hiddenFolders: others }) }
+          : { label: "Hide folder", onClick: () => void updateEvent(event.id, { hiddenFolders: [...others, folder] }) },
       ]}
     />
+    </div>
   );
 }
 

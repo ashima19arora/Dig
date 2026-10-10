@@ -30,6 +30,7 @@ export class DigDb {
     this.addColumn("users", "role", "role TEXT NOT NULL DEFAULT ''");
     this.addColumn("records", "contactability_json", "contactability_json TEXT");
     this.addColumn("records", "trust_json", "trust_json TEXT");
+    this.addColumn("events", "hidden_folders_json", "hidden_folders_json TEXT NOT NULL DEFAULT '[]'");
     this.failDangling();
   }
 
@@ -149,6 +150,7 @@ export class DigDb {
       touched: boolean;
       folderNames: Record<string, string>;
       jobs: Record<string, string | null>;
+      hiddenFolders: string[];
     }>,
   ) {
     const current = this.eventFor(id, userId);
@@ -159,8 +161,11 @@ export class DigDb {
       if (jobId) jobs[folder] = jobId;
       else delete jobs[folder];
     }
+    // Filing a search into a hidden folder shows that folder again, so results are never out of sight.
+    const filed = new Set(Object.entries(patch.jobs ?? {}).filter(([, jobId]) => jobId).map(([folder]) => folder));
+    const hidden = (patch.hiddenFolders ?? current.hiddenFolders).filter((folder) => !filed.has(folder));
     this.run(
-      `UPDATE events SET name = ?, description = ?, date = ?, targets = ?, favourite = ?, archived = ?, folder_names_json = ?, jobs_json = ?, opened_at = ?, updated_at = ?
+      `UPDATE events SET name = ?, description = ?, date = ?, targets = ?, favourite = ?, archived = ?, folder_names_json = ?, jobs_json = ?, hidden_folders_json = ?, opened_at = ?, updated_at = ?
        WHERE id = ? AND user_id = ?`,
       patch.name ?? current.name,
       patch.description ?? current.description,
@@ -170,6 +175,7 @@ export class DigDb {
       (patch.archived ?? current.archived) ? 1 : 0,
       JSON.stringify({ ...current.folderNames, ...patch.folderNames }),
       JSON.stringify(jobs),
+      JSON.stringify([...new Set(hidden)]),
       patch.touched ? now : current.openedAt,
       now,
       id,
@@ -186,6 +192,44 @@ export class DigDb {
       `%"${jobId}"%`,
     );
     return event ? `${event.id}:${intent}` : `job:${jobId}`;
+  }
+
+  /** Extra contacts per company in a search, oldest first, so they show in the order they were added. */
+  extraContacts(jobId: string) {
+    const rows = this.all<{ canonical_entity_id: string; email: string; name: string; position: string; linkedin: string | null; source_url: string | null; provider: string; verified: number; created_at: string }>(
+      "SELECT * FROM extra_contacts WHERE job_id = ? ORDER BY created_at",
+      jobId,
+    );
+    const byEntity: Record<string, Array<{ email: string; name: string; position: string; linkedin: string | null; sourceUrl: string | null; provider: string; verified: boolean }>> = {};
+    for (const row of rows) {
+      (byEntity[row.canonical_entity_id] ??= []).push({
+        email: row.email,
+        name: row.name,
+        position: row.position,
+        linkedin: row.linkedin,
+        sourceUrl: row.source_url,
+        provider: row.provider,
+        verified: Boolean(row.verified),
+      });
+    }
+    return byEntity;
+  }
+
+  addExtraContact(jobId: string, entityId: string, contact: { email: string; name: string; position: string; linkedin: string | null; sourceUrl: string | null; provider: string; verified: boolean }) {
+    this.run(
+      `INSERT OR IGNORE INTO extra_contacts (job_id, canonical_entity_id, email, name, position, linkedin, source_url, provider, verified, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      jobId,
+      entityId,
+      contact.email,
+      contact.name,
+      contact.position,
+      contact.linkedin,
+      contact.sourceUrl,
+      contact.provider,
+      contact.verified ? 1 : 0,
+      new Date().toISOString(),
+    );
   }
 
   outreach(scope: string) {
@@ -1409,6 +1453,7 @@ interface EventRow {
   archived: number;
   folder_names_json: string;
   jobs_json: string;
+  hidden_folders_json: string | null;
   opened_at: string;
 }
 
@@ -1423,6 +1468,7 @@ function mapEvent(row: EventRow) {
     archived: Boolean(row.archived),
     folderNames: JSON.parse(row.folder_names_json) as Record<string, string>,
     jobs: JSON.parse(row.jobs_json) as Record<string, string>,
+    hiddenFolders: JSON.parse(row.hidden_folders_json ?? "[]") as string[],
     openedAt: row.opened_at,
   };
 }

@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import express, { type NextFunction, type Request, type Response } from "express";
 import * as XLSX from "xlsx";
 import { z, ZodError } from "zod";
-import { buildBlueprint, cleanPitch, PITCH_SYSTEM, pitchSupported, pitchUserMessage, renderCsv, suggestJobName } from "@dig/core";
+import { acceptedHunterDomain, buildBlueprint, cleanPitch, nextBackupContact, PITCH_SYSTEM, pitchSupported, pitchUserMessage, renderCsv, suggestJobName } from "@dig/core";
 import { mountAgents } from "./agents-http.js";
 import {
   createJobSchema,
@@ -24,6 +24,7 @@ import {
 import { currentAuth, endSession, hashPassword, requireAuth, startSession, verifyPassword, type AuthedRequest } from "./auth.js";
 import { labelOf, DigDb } from "./db.js";
 import { chatJson, llmLanes } from "./collect-live.js";
+import { savedHunterContacts } from "./hunter.js";
 import { env } from "./env.js";
 import { parseQuery } from "./intent-llm.js";
 import { renderReport } from "./report.js";
@@ -634,6 +635,8 @@ async function main() {
         .object({
           entity: z.string().min(1).max(300),
           sender: z.object({ name: text, role: text, organization: text, ask: z.string().trim().max(300).default("") }),
+          // Writing to an extra contact at the company instead of the row's main one.
+          contact: z.object({ name: text, position: text }).optional(),
         })
         .parse(req.body);
       const version = db.latestVersion(job.id);
@@ -647,7 +650,7 @@ async function main() {
         system: PITCH_SYSTEM,
         user: pitchUserMessage({
           intent: job.blueprint.intent,
-          recipient: record.fields,
+          recipient: body.contact?.name ? { ...record.fields, contact: body.contact.name, contact_role: body.contact.position } : record.fields,
           event: event ? { name: event.name, date: event.date, description: event.description } : null,
           sender: body.sender,
         }),
@@ -661,6 +664,50 @@ async function main() {
     } catch (error) {
       next(error);
     }
+  });
+
+  /** Extra people per company, added with "Find another contact". */
+  app.get("/api/jobs/:id/contacts", (req, res) => {
+    const job = ownJob(req, res);
+    if (!job) return;
+    ok(res, req, { contacts: db.extraContacts(job.id) });
+  });
+
+  /**
+   * The next person at this company, from those Hunter already returned in an earlier run.
+   * Free: no new search is made. Sponsors and leads only.
+   */
+  app.post("/api/jobs/:id/contacts/next", (req, res) => {
+    const job = ownJob(req, res);
+    if (!job) return;
+    if (job.blueprint.intent !== "SPONSOR_LOOKUP" && job.blueprint.intent !== "LEAD_LOOKUP") {
+      return fail(res, req, 422, "NO_EXTRA_CONTACTS", "Extra contacts are for sponsors and leads.");
+    }
+    const body = z.object({ entity: z.string().min(1).max(300) }).parse(req.body);
+    const version = db.latestVersion(job.id);
+    const record = version ? db.recordsForVersion(version.id).find((item) => item.canonicalEntityId === body.entity) : undefined;
+    if (!record) return fail(res, req, 404, "NOT_FOUND", "That row isn’t in the latest version of this search.");
+    const domain = acceptedHunterDomain(record.fields.website || record.contactability?.channels.website.value || "");
+    const extras = db.extraContacts(job.id)[body.entity] ?? [];
+    const shown = [record.fields.email ?? "", record.contactability?.channels.email.value ?? "", ...extras.map((item) => item.email)];
+    const person = domain ? nextBackupContact(savedHunterContacts(domain), shown) : null;
+    if (!person) {
+      return ok(res, req, {
+        contact: null,
+        message: "No other saved contact for this company yet. A deeper search for more people is coming soon.",
+      });
+    }
+    const contact = {
+      email: person.email,
+      name: person.name,
+      position: person.position,
+      linkedin: person.linkedin,
+      sourceUrl: person.sources[0] ?? null,
+      provider: "hunter",
+      verified: person.verified,
+    };
+    db.addExtraContact(job.id, body.entity, contact);
+    ok(res, req, { contact });
   });
 
   app.get("/api/jobs/:id/outreach", (req, res) => {

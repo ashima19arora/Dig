@@ -31,6 +31,8 @@ export interface DigEvent {
   folderNames: Partial<Record<FolderKey, string>>;
   /** folder → the search whose results that folder shows */
   jobs: Partial<Record<FolderKey, string>>;
+  /** Folders this event does not need. Their searches are kept; filing a new search shows the folder again. */
+  hiddenFolders?: FolderKey[];
 }
 
 export type EventFields = Pick<DigEvent, "name" | "description" | "date" | "targets">;
@@ -61,6 +63,7 @@ type EventPatch = Partial<EventFields> & {
   touched?: boolean;
   folderNames?: Partial<Record<FolderKey, string>>;
   jobs?: Partial<Record<FolderKey, string | null>>;
+  hiddenFolders?: FolderKey[];
 };
 
 /** Saves a change to an event. Failures are shown as a notice; resolves to the saved event, or undefined. */

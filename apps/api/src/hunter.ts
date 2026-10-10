@@ -5,6 +5,8 @@ import {
   bestSourcedEmail,
   hunterLinkedin,
   planHunterLookup,
+  rankedHunterContacts,
+  type HunterContact,
   type HunterEmailHit,
   type HunterPlan,
   type IdentityEntity,
@@ -41,6 +43,8 @@ interface CacheEntry<T> {
 interface CacheFile {
   lookups?: Record<string, CacheEntry<ProviderCandidate[]>>;
   domains?: Record<string, CacheEntry<string>>;
+  /** Everyone a domain search returned, best first, for "Find another contact". */
+  contacts?: Record<string, CacheEntry<HunterContact[]>>;
 }
 
 const memory = new Map<string, ProviderCandidate[]>();
@@ -145,6 +149,8 @@ async function domainSearch(
     const rows = emailRows(response.body);
     hit = rows.some((row) => Boolean(row.value?.trim()));
     const best = bestSourcedEmail(rows);
+    const people = rankedHunterContacts(rows);
+    if (people.length > 0) saveContacts(domain, people);
     return { charged: hit, candidates: best ? [emailCandidate(entity, best)] : [] };
   });
   return { hit, candidates };
@@ -357,6 +363,29 @@ function recallDomain(key: string): string | null {
   const entry = readFile().domains?.[key];
   if (!entry || Date.now() - entry.at > entry.ttl || typeof entry.value !== "string") return null;
   domains.set(key, entry.value);
+  return entry.value;
+}
+
+const CONTACTS_TTL = 30 * DAY;
+
+/** Merge newly seen people into what this domain already has, keeping the best-first order. */
+function saveContacts(domain: string, people: HunterContact[]): void {
+  const file = readFile();
+  file.contacts ??= {};
+  const key = domain.toLowerCase();
+  const known = file.contacts[key]?.value ?? [];
+  const merged = [...known];
+  for (const person of people) {
+    if (!merged.some((item) => item.email.toLowerCase() === person.email.toLowerCase())) merged.push(person);
+  }
+  file.contacts[key] = { at: Date.now(), ttl: CONTACTS_TTL, value: merged };
+  writeFile(file);
+}
+
+/** People Hunter already returned for this domain. Reading them costs nothing. */
+export function savedHunterContacts(domain: string): HunterContact[] {
+  const entry = readFile().contacts?.[domain.toLowerCase()];
+  if (!entry || Date.now() - entry.at > entry.ttl || !Array.isArray(entry.value)) return [];
   return entry.value;
 }
 

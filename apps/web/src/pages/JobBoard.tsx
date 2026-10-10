@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Clock,
   Hourglass,
+  UserPlus,
   Copy,
   Download,
   ExternalLink,
@@ -60,7 +61,7 @@ const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = 
   },
   JOB_LOOKUP: {
     noun: "roles",
-    columns: [["role_title", "Role"], ["company_name", "Company"], ["location", "Location"], ["workplace", "Workplace"]],
+    columns: [["role_title", "Role"], ["company_name", "Company"], ["location", "Location"], ["workplace", "Workplace"], ["email", "Email"], ["linkedin", "LinkedIn"]],
     cards: [["role_title", "Role"], ["company_name", "Company"], ["location", "Location"], ["workplace", "Workplace"], ["website", "Website"], ["last_verified", "Last verified"]],
   },
   LEAD_LOOKUP: {
@@ -70,7 +71,7 @@ const VIEWS: Record<string, { noun: string; columns: Pair[]; cards: Pair[] }> = 
   },
   COMPETITOR_LOOKUP: {
     noun: "competitors",
-    columns: [["company_name", "Competitor"], ["category", "Category"], ["pricing_signal", "Pricing"], ["website", "Website"]],
+    columns: [["company_name", "Competitor"], ["category", "Category"], ["pricing_signal", "Pricing"], ["website", "Website"], ["email", "Email"], ["linkedin", "LinkedIn"]],
     cards: [["company_name", "Competitor"], ["category", "Category"], ["pricing_signal", "Pricing signal"], ["website", "Website"], ["last_verified", "Last verified"]],
   },
 };
@@ -324,6 +325,7 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pitchModalRecord, setPitchModalRecord] = useState<DatasetRecord | null>(null);
+  const [pitchContact, setPitchContact] = useState<ExtraContact | null>(null);
 
   const entity = params.get("entity");
   useEffect(() => {
@@ -473,6 +475,29 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
   const job = jobQ.data?.job;
   const view = VIEWS[job?.blueprint.intent ?? "SPONSOR_LOOKUP"] ?? VIEWS.SPONSOR_LOOKUP!;
   const pitchable = PITCH_INTENTS.has(job?.blueprint.intent ?? "");
+  const multiContact = job?.blueprint.intent === "SPONSOR_LOOKUP" || job?.blueprint.intent === "LEAD_LOOKUP";
+  const contactsQ = useQuery({
+    queryKey: ["contacts", jobId],
+    queryFn: () => api<{ contacts: Record<string, ExtraContact[]> }>(`/api/jobs/${jobId}/contacts`),
+    enabled: Boolean(jobId) && multiContact,
+  });
+  const extraContacts = contactsQ.data?.contacts ?? {};
+  const findAnother = useMutation({
+    mutationFn: (entity: string) =>
+      api<{ contact: ExtraContact | null; message?: string }>(`/api/jobs/${jobId}/contacts/next`, {
+        method: "POST",
+        body: JSON.stringify({ entity }),
+      }),
+    onSuccess: (result) => {
+      if (result.contact) {
+        notify(`Added ${result.contact.name}${result.contact.position ? `, ${result.contact.position}` : ""}`, "info");
+        void client.invalidateQueries({ queryKey: ["contacts", jobId] });
+      } else {
+        notify(result.message ?? "No other contact found.", "info");
+      }
+    },
+    onError: (error) => notifyError(error),
+  });
 
   // Column widths, dragged like a spreadsheet and remembered per search type in this browser.
   const widthKey = `dig-col-widths-${job?.blueprint.intent ?? "SPONSOR_LOOKUP"}`;
@@ -976,9 +1001,10 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                     {rows.map((record) => {
                       const mark = outreach[record.canonicalEntityId];
                       const isRowSelected = selectedIds.has(record.id);
+                      const extras = multiContact ? extraContacts[record.canonicalEntityId] ?? [] : [];
                       return (
+                        <Fragment key={record.id}>
                         <tr
-                          key={record.id}
                           className={`${panel?.kind === "record" && panel.key === record.canonicalEntityId ? "sel" : ""}${isRowSelected ? " row-selected" : ""}`}
                           onClick={() => {
                             setPanel({ kind: "record", key: record.canonicalEntityId });
@@ -1088,8 +1114,40 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
                                 <Mail size={11} /> Pitch
                               </button>
                             )}
+                            {multiContact && (
+                              <button
+                                className="btn"
+                                style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4, marginLeft: 4 }}
+                                title="Find another person at this company"
+                                disabled={findAnother.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  findAnother.mutate(record.canonicalEntityId);
+                                }}
+                              >
+                                <UserPlus size={11} /> Another
+                              </button>
+                            )}
                           </td>
                         </tr>
+                        {extras.map((person) => (
+                          <ExtraContactRow
+                            key={person.email}
+                            person={person}
+                            columns={view.columns}
+                            outreach={outreach[contactKey(record.canonicalEntityId, person.email)]}
+                            onOutreach={(patch) => void setOutreach(contactKey(record.canonicalEntityId, person.email), patch)}
+                            onPitch={
+                              pitchable
+                                ? () => {
+                                    setPitchContact(person);
+                                    setPitchModalRecord(record);
+                                  }
+                                : undefined
+                            }
+                          />
+                        ))}
+                        </Fragment>
                       );
                     })}
                     {rows.length === 0 && (
@@ -1153,7 +1211,15 @@ export function JobBoard({ jobId, crumbs }: { jobId: string; crumbs: Crumb[] }) 
         )}
 
         {pitchModalRecord && (
-          <PitchModal record={pitchModalRecord} jobId={jobId} onClose={() => setPitchModalRecord(null)} />
+          <PitchModal
+            record={pitchModalRecord}
+            contact={pitchContact}
+            jobId={jobId}
+            onClose={() => {
+              setPitchModalRecord(null);
+              setPitchContact(null);
+            }}
+          />
         )}
 
         <div className="board-foot">
@@ -1237,6 +1303,106 @@ function OutreachIcon({ status }: { status: OutreachStatus }) {
   if (status === "declined") return <X size={13} strokeWidth={3} />;
   if (status === "waiting") return <Hourglass size={12} />;
   return <Clock size={12} />;
+}
+
+/** Another person at a company, added with "Find another contact". */
+interface ExtraContact {
+  email: string;
+  name: string;
+  position: string;
+  linkedin: string | null;
+  sourceUrl: string | null;
+  provider: string;
+  verified: boolean;
+}
+
+/** Outreach for an extra contact is kept under the company plus the person's email. */
+function contactKey(entity: string, email: string) {
+  return `${entity}~${email.toLowerCase()}`;
+}
+
+/** An extra contact, shown indented under its company so a company's people stay together. */
+function ExtraContactRow({
+  person,
+  columns,
+  outreach,
+  onOutreach,
+  onPitch,
+}: {
+  person: ExtraContact;
+  columns: Pair[];
+  outreach: Outreach | undefined;
+  onOutreach: (patch: Partial<Pick<Outreach, "status" | "note">>) => void;
+  onPitch?: () => void;
+}) {
+  return (
+    <tr className="extra-contact">
+      <td />
+      <td className="n">↳</td>
+      {columns.map(([key], index) => {
+        if (index === 0) {
+          return (
+            <Fragment key={key}>
+              <td title={person.position ? `${person.name}, ${person.position}` : person.name}>
+                <div style={{ fontWeight: 600 }}>{person.name}</div>
+                {person.position && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{person.position}</div>}
+              </td>
+              <td className="oc">
+                <OutreachButton status={outreach?.status ?? "pending"} onChange={(next) => onOutreach({ status: next })} />
+              </td>
+            </Fragment>
+          );
+        }
+        if (key === "contact") return <td key={key}>{person.name}</td>;
+        if (key === "email") {
+          return (
+            <td key={key}>
+              <a
+                href={`mailto:${person.email}`}
+                className="email-link"
+                onClick={(e) => e.stopPropagation()}
+                title={person.sourceUrl ? `Seen on ${person.sourceUrl}` : person.email}
+              >
+                <Mail size={12} style={{ flexShrink: 0, opacity: 0.7 }} />
+                <span>{person.email}</span>
+              </a>
+            </td>
+          );
+        }
+        if (key === "linkedin") {
+          return (
+            <td key={key}>
+              {person.linkedin ? (
+                <a href={person.linkedin} target="_blank" rel="noreferrer" className="email-link" onClick={(e) => e.stopPropagation()}>
+                  <span>{shortProfile(person.linkedin)}</span>
+                  <ExternalLink size={10} style={{ flexShrink: 0 }} />
+                </a>
+              ) : (
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>—</span>
+              )}
+            </td>
+          );
+        }
+        return <td key={key} />;
+      })}
+      <NoteCell note={outreach?.note ?? ""} who={outreach?.updatedBy ?? null} onSave={(note) => onOutreach({ note })} />
+      <td style={{ textAlign: "center" }}>
+        {onPitch && (
+          <button
+            className="btn"
+            style={{ padding: "3px 8px", fontSize: 11, height: 24, gap: 4 }}
+            title={`Write a first-contact email to ${person.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPitch();
+            }}
+          >
+            <Mail size={11} /> Pitch
+          </button>
+        )}
+      </td>
+    </tr>
+  );
 }
 
 /** Click to open a small menu of the four outreach states. */
@@ -1638,10 +1804,10 @@ function loadSender(): PitchSender {
 }
 
 /** A first-contact email written from the row's sourced facts, your event, and who you are. Always editable. */
-function PitchModal({ record, jobId, onClose }: { record: DatasetRecord; jobId: string; onClose: () => void }) {
-  const recipient = record.fields.person_name || record.fields.contact || record.fields.company_name || record.label || "this contact";
-  const email = getEmail(record);
-  const linkedin = record.fields.linkedin;
+function PitchModal({ record, contact, jobId, onClose }: { record: DatasetRecord; contact: ExtraContact | null; jobId: string; onClose: () => void }) {
+  const recipient = contact?.name || record.fields.person_name || record.fields.contact || record.fields.company_name || record.label || "this contact";
+  const email = contact ? contact.email : getEmail(record);
+  const linkedin = contact ? contact.linkedin ?? undefined : record.fields.linkedin;
   const [sender, setSender] = useState<PitchSender>(loadSender);
   const [draft, setDraft] = useState<{ subject: string; body: string } | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
@@ -1651,7 +1817,11 @@ function PitchModal({ record, jobId, onClose }: { record: DatasetRecord; jobId: 
     mutationFn: () =>
       api<{ pitch: { subject: string; body: string }; event: { name: string } | null }>(`/api/jobs/${jobId}/pitch`, {
         method: "POST",
-        body: JSON.stringify({ entity: record.canonicalEntityId, sender }),
+        body: JSON.stringify({
+          entity: record.canonicalEntityId,
+          sender,
+          ...(contact ? { contact: { name: contact.name, position: contact.position } } : {}),
+        }),
       }),
     onSuccess: (result) => {
       setDraft(result.pitch);
