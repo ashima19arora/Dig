@@ -220,6 +220,8 @@ const FOLDER_INTENTS: Record<string, FolderKey> = {
   JOB_LOOKUP: "jobs",
   LEAD_LOOKUP: "leads",
   COMPETITOR_LOOKUP: "competitors",
+  EVENT_LOOKUP: "events",
+  PAPER_LOOKUP: "papers",
 };
 
 /** Shows **text** as bold instead of printing the asterisks. */
@@ -290,19 +292,23 @@ export function AskDiglett() {
               })),
             ]);
 
-            const INTENT_TO_CATEGORY: Record<string, "sponsors" | "judges" | "jobs" | "leads" | "competitors"> = {
+            const INTENT_TO_CATEGORY: Record<string, FolderKey> = {
               SPONSOR_LOOKUP: "sponsors",
               JUDGE_LOOKUP: "judges",
               JOB_LOOKUP: "jobs",
               LEAD_LOOKUP: "leads",
               COMPETITOR_LOOKUP: "competitors",
+              EVENT_LOOKUP: "events",
+              PAPER_LOOKUP: "papers",
             };
             const rawIntent = job.intent || job.blueprint?.intent || "";
-            const category: "sponsors" | "judges" | "jobs" | "leads" | "competitors" = INTENT_TO_CATEGORY[rawIntent] ?? "leads";
+            const category: FolderKey = INTENT_TO_CATEGORY[rawIntent] ?? "leads";
             const outreachMap: Record<string, { status?: string; note?: string }> = outreachRes.outreach || {};
 
             for (const rec of datasetRes.records || []) {
               const name =
+                (rec.fields.paper_title as string) ||
+                (rec.fields.event_name as string) ||
                 rec.label ||
                 String(rec.fields.company_name || rec.fields.person_name || rec.fields.role_title || "Unnamed Entity");
 
@@ -679,6 +685,17 @@ export function AskDiglett() {
         >
           {/* macOS Styled Window Titlebar */}
           <div className="diglett-macos-titlebar">
+            <div className="diglett-traffic-lights" aria-label="Window controls">
+              <Tip text="Close Diglett (Esc)">
+                <button type="button" className="diglett-dot red" onClick={() => setOpen(false)} aria-label="Close" />
+              </Tip>
+              <Tip text={expanded ? "Compact view" : "Minimize"}>
+                <button type="button" className="diglett-dot yellow" onClick={() => setExpanded(false)} aria-label="Minimize" />
+              </Tip>
+              <Tip text={expanded ? "Compact view" : "Expand view"}>
+                <button type="button" className="diglett-dot green" onClick={() => setExpanded((v) => !v)} aria-label="Expand view" />
+              </Tip>
+            </div>
             <div className="diglett-title-center">
               <img src="/art/mole-avatar.png" alt="Diglett" className="diglett-header-avatar" />
               <span className="diglett-title-text">Diglett</span>
